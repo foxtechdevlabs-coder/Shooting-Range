@@ -1,0 +1,116 @@
+/**
+ * Session-based authentication middleware.
+ * Validates the session cookie, enforces idle timeout, slides the session.
+ */
+import type { Request, Response, NextFunction } from 'express'
+import { getSqlite } from '../db/connection.js'
+import type { User } from '../db/schema.js'
+import type { Permission } from '../../../shared/permissions.js'
+
+export interface AuthUser {
+  id: number
+  full_name: string
+  username: string
+  role: 'admin' | 'staff'
+  permissions: Permission[]
+  active: boolean
+  must_change_password: boolean
+}
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      user?: AuthUser
+      sessionId?: string
+    }
+  }
+}
+
+export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const sessionId = req.cookies?.session_id as string | undefined
+  if (!sessionId) {
+    res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Authentication required' } })
+    return
+  }
+
+  const db = getSqlite()
+  const now = new Date().toISOString()
+
+  // Look up session
+  const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId) as {
+    id: string; user_id: number; expires_at: string; last_seen_at: string
+  } | undefined
+
+  if (!session || session.expires_at < now) {
+    // Clear stale session
+    if (session) db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId)
+    res.clearCookie('session_id')
+    res.status(401).json({ error: { code: 'SESSION_EXPIRED', message: 'Your session has expired. Please sign in again.' } })
+    return
+  }
+
+  // Idle timeout: check last_seen_at
+  const idleTimeoutSetting = db.prepare("SELECT value FROM settings WHERE key = 'idle_timeout_minutes'").get() as { value: string } | undefined
+  const idleMinutes = parseInt(idleTimeoutSetting?.value ?? '15', 10)
+  const idleDeadline = new Date(Date.now() - idleMinutes * 60 * 1000).toISOString()
+  if (session.last_seen_at < idleDeadline) {
+    db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId)
+    res.clearCookie('session_id')
+    res.status(401).json({ error: { code: 'SESSION_IDLE_TIMEOUT', message: 'Your session timed out due to inactivity. Please sign in again.' } })
+    return
+  }
+
+  // Load user
+  const userRow = db.prepare('SELECT * FROM users WHERE id = ?').get(session.user_id) as User | undefined
+  if (!userRow || !userRow.active) {
+    db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId)
+    res.clearCookie('session_id')
+    res.status(401).json({ error: { code: 'ACCOUNT_DISABLED', message: 'This account has been disabled.' } })
+    return
+  }
+
+  // Slide the session last_seen_at
+  db.prepare('UPDATE sessions SET last_seen_at = ? WHERE id = ?').run(now, sessionId)
+
+  const permissions = JSON.parse(userRow.permissions ?? '[]') as Permission[]
+
+  req.user = {
+    id: userRow.id,
+    full_name: userRow.full_name,
+    username: userRow.username,
+    role: userRow.role as 'admin' | 'staff',
+    permissions,
+    active: userRow.active,
+    must_change_password: userRow.must_change_password,
+  }
+  req.sessionId = sessionId
+
+  next()
+}
+
+export function requirePermission(...permissions: Permission[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Authentication required' } })
+      return
+    }
+
+    const user = req.user
+    const hasPermission =
+      user.role === 'admin' ||
+      permissions.every((p) => user.permissions.includes(p))
+
+    if (!hasPermission) {
+      res.status(403).json({
+        error: {
+          code: 'FORBIDDEN',
+          message: `You do not have permission to perform this action. Required: ${permissions.join(', ')}`,
+        },
+      })
+      return
+    }
+
+    next()
+  }
+}
