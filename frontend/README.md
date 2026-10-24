@@ -1,37 +1,24 @@
 # RangeOps — Shooting Range Management
 
-A local-first shooting range operations frontend built with Vite, React, and TypeScript. The app runs entirely in your browser; demo data is persisted to localStorage and no cloud services or external requests are required.
+React and TypeScript frontend for the SQLite-backed RangeOps API.
 
 ## Run locally
+
+Start the backend on `http://127.0.0.1:3001`, then run the frontend:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite (normally `http://localhost:5173`). Build the production bundle with `npm run build`.
+The Vite development server proxies `/api` requests to the backend. Build the production bundle with `npm run build`.
 
-To make the development server reachable by other devices on your LAN, run `npm run dev -- --host 0.0.0.0` and use the host machine's LAN address.
+## Mock demo mode
 
-## Demo sign-in
+The frontend uses the backend by default. Set `VITE_USE_MOCK=true` only for a standalone demo; the old seeded mock data and browser persistence are loaded only in that mode. Do not set this flag in `.env` or `.env.local` for a backend-connected deployment.
 
-| Role | Username | Password |
-| --- | --- | --- |
-| Administrator | `admin` | `admin123` |
-| Staff | `staff` | `staff123` |
+## API-backed workflows
 
-## Included workflows
+Authentication, participants, Excel import, scan, transaction queries, users, settings, labels, printing, dashboard metrics, and reports use the backend API. Zustand contains session and UI state; only the dark/light theme preference is persisted by the production frontend.
 
-- Dashboard with range activity, participant category charts, and recent activity
-- Participant register with search, filters, validation, bulk selection, and spreadsheet import
-- Code128 pouch barcode labels with print layout
-- Touch-friendly scan station with manual lookup and duplicate-scan protection
-- Transaction audit log and reason-required corrections
-- Excel reports, user permissions, and event/local data settings
-- Local JSON backup and restore
-
-## Connecting a backend
-
-All persistent domain data is accessed through [`src/services/api.ts`](./src/services/api.ts). Replace the localStorage-backed functions there with calls to your backend while retaining the typed interfaces in [`src/types/index.ts`](./src/types/index.ts). `src/services/mockData.ts` provides the first-run seed dataset (40 participants and demo users). UI state and permissions live in `src/store/useAppStore.ts`.
-
-For a LAN deployment, build with `npm run build` and serve the generated `dist` folder from a machine reachable on your network. Browser localStorage is per browser profile/device; a shared multi-device register requires the backend service noted above.
+The backend currently has no transaction-correction endpoint or general activity-log listing endpoint. Reports derive available activity rows from transactions where possible. Server-side backup and demo reset endpoints are also not available.

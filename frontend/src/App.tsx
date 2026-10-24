@@ -2,6 +2,8 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { BrowserRouter, Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { BarChart3, Bell, ChevronLeft, ChevronRight, ClipboardList, FileSpreadsheet, LayoutDashboard, LogOut, Menu, Moon, QrCode, ScanLine, Settings, ShieldCheck, Sun, Users, UserRound, X } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
+import { api } from '@/services'
+import { isServerUnavailable } from '@/lib/api'
 import type { Permission } from '@/types'
 const LoginPage = lazy(() => import('@/pages/LoginPage').then((module) => ({ default: module.LoginPage })))
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((module) => ({ default: module.DashboardPage })))
@@ -13,9 +15,12 @@ const TransactionsPage = lazy(() => import('@/pages/TransactionsPage').then((mod
 const ReportsPage = lazy(() => import('@/pages/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 const UsersPage = lazy(() => import('@/pages/UsersPage').then((module) => ({ default: module.UsersPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((module) => ({ default: module.SettingsPage })))
+const ChangePasswordPage = lazy(() => import('@/pages/ChangePasswordPage').then((module) => ({ default: module.ChangePasswordPage })))
 
 function RequireAuth() {
-  return useAppStore((s) => s.currentUser) ? <Outlet /> : <Navigate to="/login" replace />
+  const { currentUser, authLoading } = useAppStore()
+  if (authLoading) return <div className="loading-screen" role="status"><div /><span>Restoring your session…</span></div>
+  return currentUser ? <Outlet /> : <Navigate to="/login" replace />
 }
 
 function RequirePermission({ permission }: { permission: Permission }) {
@@ -39,7 +44,7 @@ function Shell() {
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpenPath, setMobileOpenPath] = useState<string | null>(null)
-  const { currentUser, dark, setDark, logout, toast } = useAppStore()
+  const { currentUser, dark, setDark, logout, toast, serverError } = useAppStore()
   const mobileOpen = mobileOpenPath === location.pathname
   const activeItem = navItems.find((item) => item.path === location.pathname)
   const title = activeItem?.label ?? (location.pathname.includes('/reports/') ? 'Reports' : 'Dashboard')
@@ -66,6 +71,7 @@ function Shell() {
         <button className="sidebar-expand" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setCollapsed(!collapsed)}>{collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}</button>
       </aside>
       <div className="workspace">
+        {serverError && <div className="server-error" role="alert">{serverError}</div>}
         <header className="topbar">
           <button className="icon-button mobile-menu" onClick={() => setMobileOpenPath(location.pathname)} aria-label="Open navigation"><Menu size={19} /></button>
           <div className="breadcrumb"><span>Workspace</span><ChevronRight size={14} /><strong>{title}</strong></div>
@@ -88,9 +94,24 @@ function Shell() {
 }
 
 function AppRoutes() {
+  const { login, currentUser } = useAppStore()
+  useEffect(() => {
+    let active = true
+    void api.me().then((user) => {
+      if (active) login(user)
+    }).catch((error) => {
+      if (active) useAppStore.setState({
+        authLoading: false,
+        serverError: isServerUnavailable(error) ? error.message : '',
+      })
+    })
+    return () => { active = false }
+  }, [login])
   return <BrowserRouter><Suspense fallback={<div className="loading-screen" role="status" aria-label="Loading page"><div /><span>Loading workspace…</span></div>}><Routes>
     <Route path="/login" element={<LoginPage />} />
     <Route element={<RequireAuth />}>
+      <Route path="/change-password" element={<ChangePasswordPage />} />
+      {currentUser?.mustChangePassword && <Route path="*" element={<Navigate to="/change-password" replace />} />}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route element={<Shell />}>
         <Route path="/dashboard" element={<DashboardPage />} />
@@ -110,4 +131,7 @@ function AppRoutes() {
   </Routes></Suspense></BrowserRouter>
 }
 
-export default function App() { return <AppRoutes /> }
+export default function App() {
+  const serverError = useAppStore((state) => state.serverError)
+  return <>{serverError && !useAppStore.getState().currentUser && <div className="server-error" role="alert">{serverError}</div>}<AppRoutes /></>
+}

@@ -1,4 +1,5 @@
 import type { LABEL_LAYOUT } from '@shared/label'
+import { request } from '@/lib/api'
 
 export interface PrinterInfo {
   name: string
@@ -58,13 +59,10 @@ export interface LabelSummary {
   stale: number
 }
 
-export function isMockMode(): boolean {
-  return import.meta.env.VITE_USE_MOCK === 'true'
-}
-
-export function formatPrinterErrorMessage(error: any): string {
-  const code = error?.code || error?.error?.code
-  const message = error?.message || error?.error?.message
+export function formatPrinterErrorMessage(error: unknown): string {
+  const value = error as { code?: string; message?: string; error?: { code?: string; message?: string } }
+  const code = value?.code || value?.error?.code
+  const message = value?.message || value?.error?.message
 
   switch (code) {
     case 'PRINTER_NOT_FOUND':
@@ -84,61 +82,18 @@ export function formatPrinterErrorMessage(error: any): string {
   }
 }
 
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options?.headers || {}),
-    },
-    ...options,
-  })
-
-  if (!res.ok) {
-    let errBody: any
-    try {
-      errBody = await res.json()
-    } catch {
-      errBody = { error: { code: 'HTTP_' + res.status, message: res.statusText } }
-    }
-    const err = new Error(errBody.error?.message || 'Request failed')
-    ;(err as any).code = errBody.error?.code || 'REQUEST_FAILED'
-    ;(err as any).status = res.status
-    ;(err as any).fields = errBody.error?.fields
-    throw err
-  }
-
-  return res.json()
-}
-
 export const printingApi = {
   async getPrinters(): Promise<PrinterSettingsResponse> {
-    if (isMockMode()) {
-      return {
-        printers: [
-          { name: 'Zebra ZD220 (203dpi)', driverName: 'ZDesigner ZD220-203dpi ZPL', status: 0 },
-          { name: 'Microsoft Print to PDF', driverName: 'Microsoft Print to PDF', status: 0 },
-        ],
-        configuredPrinter: 'Zebra ZD220 (203dpi)',
-        driver: 'windows',
-      }
-    }
     return request<PrinterSettingsResponse>('/api/printing/printers')
   },
 
   async printTestLabel(): Promise<{ ok: boolean; jobId: number; driver: string; printerName: string }> {
-    if (isMockMode()) {
-      return { ok: true, jobId: 9999, driver: 'file', printerName: 'Demo Printer' }
-    }
     return request<{ ok: boolean; jobId: number; driver: string; printerName: string }>('/api/printing/test', {
       method: 'POST',
     })
   },
 
   async printLabels(payload: PrintLabelsPayload): Promise<PrintResultResponse> {
-    if (isMockMode()) {
-      const count = payload.selection.type === 'ids' ? payload.selection.ids.length : 1
-      return { jobId: Math.floor(Math.random() * 1000) + 1, count, status: 'sent', driver: 'file' }
-    }
     return request<PrintResultResponse>('/api/labels/print', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -146,28 +101,15 @@ export const printingApi = {
   },
 
   async getPreview(participantId: number | string): Promise<LabelPreviewData> {
-    if (isMockMode()) {
-      return {
-        participant: {
-          id: Number(participantId),
-          bib_number: '101',
-          noc: 'IND',
-          name: 'Demo Athlete',
-          gun_number: 'G-201',
-          category_name: 'Senior Men',
-          label_printed: false,
-          label_stale: false,
-        },
-        layout: {} as any,
-      }
-    }
     return request<LabelPreviewData>(`/api/labels/preview/${participantId}`)
   },
 
   async getSummary(): Promise<LabelSummary> {
-    if (isMockMode()) {
-      return { total: 40, printed: 25, unprinted: 15, stale: 0 }
-    }
     return request<LabelSummary>('/api/labels/summary')
+  },
+
+  async getJobs() {
+    const result = await request<{ data: Array<Record<string, unknown>> }>('/api/labels/jobs')
+    return result.data
   },
 }

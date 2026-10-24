@@ -36,6 +36,11 @@ export interface Transaction {
   correctedBy?: string
   correctedAt?: string
   originalType?: TransactionType
+  participantName?: string
+  participantBib?: string
+  participantNoc?: string
+  gunNumber?: string
+  performerName?: string
 }
 
 export interface User {
@@ -43,6 +48,7 @@ export interface User {
   name: string
   username: string
   password: string
+  mustChangePassword?: boolean
   role: Role
   permissions: Permission[]
   active: boolean
@@ -75,6 +81,7 @@ export interface AppSettings {
   labelShowEventName?: boolean
   labelMediaTracking?: 'none' | 'gap'
   printDriver?: 'windows' | 'file'
+  backupFolder?: string
 }
 
 

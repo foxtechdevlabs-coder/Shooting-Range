@@ -40,6 +40,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 a { color: inherit; text-decoration: none; }
 ::selection { color: #173c60; background: #dcebf7; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.data-skeleton { display: grid; gap: 16px; }
+.data-skeleton > span { color: var(--muted); }
+.skeleton { border-radius: 10px; background: linear-gradient(90deg, #edf0f3 25%, #f7f8fa 50%, #edf0f3 75%); background-size: 200% 100%; animation: skeleton-shimmer 1.4s ease-in-out infinite; }
+.skeleton-heading { height: 68px; width: min(440px, 100%); }
+.skeleton-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.skeleton-card { height: 132px; }
+.skeleton-panel { height: min(360px, 45vh); }
+.server-error { padding: 10px 20px; background: #fff0ed; color: #9c2f24; border-bottom: 1px solid #f2c7c0; font-weight: 600; }
+@keyframes skeleton-shimmer { to { background-position: -200% 0; } }
 
 /* Shell */
 .app-shell { min-height: 100vh; }

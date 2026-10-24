@@ -1,22 +1,26 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Activity, ArrowDownLeft, ArrowUpRight, ArrowUpRightFromSquare, Clock3, Crosshair, Users, WalletCards } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Link } from 'react-router-dom'
 import { PageHeading } from '@/components/ui'
-import { useAppStore } from '@/store/useAppStore'
 import { formatTime } from '@/lib/format'
+import { useRangeData } from '@/hooks/useRangeData'
 
-const hourly = [
-  { hour: '8 AM', checkIn: 8, checkOut: 3 }, { hour: '9 AM', checkIn: 17, checkOut: 7 },
-  { hour: '10 AM', checkIn: 25, checkOut: 12 }, { hour: '11 AM', checkIn: 20, checkOut: 16 },
-  { hour: '12 PM', checkIn: 30, checkOut: 14 }, { hour: '1 PM', checkIn: 18, checkOut: 21 },
-  { hour: '2 PM', checkIn: 26, checkOut: 13 }, { hour: '3 PM', checkIn: 21, checkOut: 18 },
-]
 const colors = ['#224c78', '#4276a5', '#7499bc', '#a9bfd3', '#d0dce7']
 
 export function DashboardPage() {
   const [now] = useState(() => new Date())
-  const { participants, transactions, activity, users } = useAppStore()
+  const { participants, transactions, activity, users, loading } = useRangeData()
+  const hourly = useMemo(() => Array.from({ length: 8 }, (_, index) => {
+    const hourValue = index + 8
+    const hour = new Date(now)
+    hour.setHours(hourValue, 0, 0, 0)
+    const hourLabel = new Intl.DateTimeFormat('en', { hour: 'numeric' }).format(hour)
+    const inCount = transactions.filter((transaction) => new Date(transaction.timestamp).toDateString() === now.toDateString() && new Date(transaction.timestamp).getHours() === hourValue && transaction.type === 'check-in').length
+    const outCount = transactions.filter((transaction) => new Date(transaction.timestamp).toDateString() === now.toDateString() && new Date(transaction.timestamp).getHours() === hourValue && transaction.type === 'check-out').length
+    return { hour: hourLabel, checkIn: inCount, checkOut: outCount }
+  }), [transactions, now])
+  if (loading) return <div className="page data-skeleton" role="status" aria-label="Loading dashboard"><div className="skeleton skeleton-heading" /><div className="skeleton-grid">{[1, 2, 3, 4].map((item) => <div className="skeleton skeleton-card" key={item} />)}</div><div className="skeleton skeleton-panel" /><span>Loading dashboard data…</span></div>
   const inCount = participants.filter((p) => p.status === 'in').length
   const outCount = participants.length - inCount
   const today = now.toDateString()
