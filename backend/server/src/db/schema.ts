@@ -69,6 +69,20 @@ export const transactions = sqliteTable('transactions', {
     .notNull()
     .references(() => users.id),
   manual_entry: integer('manual_entry', { mode: 'boolean' }).notNull().default(false),
+  source: text('source').notNull().default('scan'),
+})
+
+// ─── Corrections (append-only) ───────────────────────────────────────────────
+
+export const corrections = sqliteTable('corrections', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  transaction_id: integer('transaction_id').references(() => transactions.id),
+  action: text('action', { enum: ['edit', 'void', 'add'] }).notNull(),
+  old_values: text('old_values'),
+  new_values: text('new_values').notNull(),
+  reason: text('reason').notNull(),
+  user_id: integer('user_id').references(() => users.id),
+  created_at: text('created_at').notNull(),
 })
 
 // ─── Print Jobs (append-only) ─────────────────────────────────────────────────
@@ -136,9 +150,9 @@ export type Session = typeof sessions.$inferSelect
 export type Category = typeof categories.$inferSelect
 export type Participant = typeof participants.$inferSelect
 export type Transaction = typeof transactions.$inferSelect
+export type Correction = typeof corrections.$inferSelect
 export type PrintJob = typeof printJobs.$inferSelect
 export type PrintJobItem = typeof printJobItems.$inferSelect
 export type ActivityLog = typeof activityLog.$inferSelect
 export type ImportBatch = typeof importBatches.$inferSelect
 export type Setting = typeof settings.$inferSelect
-

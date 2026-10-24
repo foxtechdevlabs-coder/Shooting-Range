@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { getSqlite } from '../db/connection.js'
 import { requireAuth, requirePermission } from '../middleware/auth.js'
 import { apiError } from '../middleware/errorHandler.js'
+import { effectiveTransactions } from '../services/effectiveTransactions.js'
 import { upload, verifyXlsxSignature } from '../middleware/upload.js'
 import type { Participant, Category } from '../db/schema.js'
 
@@ -20,6 +21,7 @@ interface PreviewEntry {
 }
 
 interface ParsedParticipant {
+  row: number
   bib_number: string
   noc: string
   name: string
@@ -131,7 +133,7 @@ participantsRouter.get('/:id', requirePermission('participants.view'), (req, res
     const db = getSqlite()
     const p = db.prepare('SELECT p.*, c.name as category_name FROM participants p LEFT JOIN categories c ON c.id = p.category_id WHERE p.id = ?').get(id) as (Participant & { category_name: string }) | undefined
     if (!p) apiError(404, 'NOT_FOUND', 'Participant not found')
-    const txs = db.prepare('SELECT t.*, u.full_name as user_name FROM transactions t LEFT JOIN users u ON u.id = t.user_id WHERE t.participant_id = ? ORDER BY t.created_at DESC').all(id)
+    const txs = effectiveTransactions(db, id).reverse()
     res.json({ participant: formatParticipant(p), transactions: txs })
   } catch (err) { next(err) }
 })
@@ -376,6 +378,7 @@ participantsRouter.post('/import/preview', requirePermission('import.use'), uplo
           errors.push({ row: rowNum, values: { ...values, bib_number: bib, gun_number: gun, noc }, reasons })
         } else {
           valid.push({
+            row: rowNum,
             bib_number: bib, noc, name, department: dept,
             gun_number: gun, contact_number: contact,
             category_id: cat!.id, category_name: cat!.name,

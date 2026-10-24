@@ -114,3 +114,15 @@ export function requirePermission(...permissions: Permission[]) {
     next()
   }
 }
+
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Authentication required' } })
+    return
+  }
+  if (req.user.role !== 'admin') {
+    res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Administrator access is required.' } })
+    return
+  }
+  next()
+}

@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { getSqlite } from '../db/connection.js'
 import { requireAuth, requirePermission } from '../middleware/auth.js'
+import { effectiveTransactions } from '../services/effectiveTransactions.js'
 
 export const transactionsRouter = Router()
 transactionsRouter.use(requireAuth)
@@ -12,6 +13,7 @@ const querySchema = z.object({
   participant_id: z.coerce.number().optional(),
   gun_number: z.string().optional(),
   type: z.enum(['in', 'out']).optional(),
+  status: z.enum(['valid', 'corrected', 'voided']).optional(),
   user_id: z.coerce.number().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
@@ -19,40 +21,24 @@ const querySchema = z.object({
   limit: z.coerce.number().int().positive().max(500).default(20),
 })
 
-// GET /api/transactions
 transactionsRouter.get('/', (req, res, next) => {
   try {
     const query = querySchema.parse(req.query)
-    const db = getSqlite()
-
-    const conditions: string[] = []
-    const params: (string | number)[] = []
-
-    if (query.search) {
-      conditions.push('(p.name LIKE ? OR p.bib_number LIKE ? OR t.gun_number LIKE ?)')
-      const s = `%${query.search}%`
-      params.push(s, s, s)
-    }
-    if (query.participant_id) { conditions.push('t.participant_id = ?'); params.push(query.participant_id) }
-    if (query.gun_number) { conditions.push('t.gun_number = ? COLLATE NOCASE'); params.push(query.gun_number.toUpperCase()) }
-    if (query.type) { conditions.push('t.type = ?'); params.push(query.type) }
-    if (query.user_id) { conditions.push('t.user_id = ?'); params.push(query.user_id) }
-    if (query.from) { conditions.push('t.created_at >= ?'); params.push(`${query.from}T00:00:00.000Z`) }
-    if (query.to) { conditions.push('t.created_at <= ?'); params.push(`${query.to}T23:59:59.999Z`) }
-
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-    const total = (db.prepare(`SELECT COUNT(*) as c FROM transactions t LEFT JOIN participants p ON p.id = t.participant_id ${where}`).get(...params) as { c: number }).c
-
-    const rows = db.prepare(`
-      SELECT t.*, p.name as participant_name, p.bib_number, p.noc, u.full_name as user_name
-      FROM transactions t
-      LEFT JOIN participants p ON p.id = t.participant_id
-      LEFT JOIN users u ON u.id = t.user_id
-      ${where}
-      ORDER BY t.created_at DESC
-      LIMIT ? OFFSET ?
-    `).all(...params, query.limit, query.page * query.limit)
-
-    res.json({ data: rows, total, page: query.page, limit: query.limit })
+    const search = query.search?.toLowerCase()
+    const from = query.from ? `${query.from}T00:00:00.000Z` : undefined
+    const to = query.to ? `${query.to}T23:59:59.999Z` : undefined
+    const rows = effectiveTransactions(getSqlite()).filter((row) =>
+      (!search || `${row.participant_name ?? ''} ${row.bib_number ?? ''} ${row.gun_number}`.toLowerCase().includes(search)) &&
+      (!query.participant_id || row.participant_id === query.participant_id) &&
+      (!query.gun_number || row.gun_number.toLowerCase() === query.gun_number.toLowerCase()) &&
+      (!query.type || row.type === query.type) &&
+      (!query.status || row.status === query.status) &&
+      (!query.user_id || row.user_id === query.user_id) &&
+      (!from || row.created_at >= from) &&
+      (!to || row.created_at <= to))
+      .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id)
+    const total = rows.length
+    const data = rows.slice(query.page * query.limit, (query.page + 1) * query.limit)
+    res.json({ data, total, page: query.page, limit: query.limit })
   } catch (err) { next(err) }
 })

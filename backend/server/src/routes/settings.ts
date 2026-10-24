@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { getSqlite } from '../db/connection.js'
 import { requireAuth, requirePermission } from '../middleware/auth.js'
+import { validateBackupFolder } from '../services/backup.js'
 
 export const settingsRouter = Router()
 settingsRouter.use(requireAuth)
@@ -23,6 +24,10 @@ const updateSchema = z.record(z.string(), z.string())
 settingsRouter.patch('/', requirePermission('settings.manage'), (req, res, next) => {
   try {
     const body = updateSchema.parse(req.body)
+    if (body.backup_folder !== undefined) {
+      body.backup_folder = body.backup_folder.trim()
+      if (body.backup_folder) validateBackupFolder(body.backup_folder)
+    }
     const db = getSqlite()
     const now = new Date().toISOString()
 

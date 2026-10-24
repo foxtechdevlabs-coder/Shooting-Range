@@ -11,6 +11,10 @@ import { transactionsRouter } from './routes/transactions.js'
 import { settingsRouter } from './routes/settings.js'
 import { printingRouter } from './routes/printing.js'
 import { labelsRouter } from './routes/labels.js'
+import { correctionsRouter } from './routes/corrections.js'
+import { reportsRouter } from './routes/reports.js'
+import { activityRouter } from './routes/activity.js'
+import { backupRouter, fullExportRouter, resetDemoRouter } from './routes/backup.js'
 import { errorHandler } from './middleware/errorHandler.js'
 
 
@@ -50,10 +54,16 @@ export function createApp() {
   app.use('/api/auth', authLimiter, authRouter)
   app.use('/api/users', usersRouter)
   app.use('/api/categories', categoriesRouter)
-  app.use('/api/participants/import', uploadLimiter, participantsRouter)
+  app.use('/api/participants/import', uploadLimiter)
   app.use('/api/participants', participantsRouter)
   app.use('/api/scan', scanRouter)
   app.use('/api/transactions', transactionsRouter)
+  app.use('/api', correctionsRouter)
+  app.use('/api/activity', activityRouter)
+  app.use('/api/reports', reportsRouter)
+  app.use('/api/backup', backupRouter)
+  app.use('/api/export', fullExportRouter)
+  app.use('/api/settings', resetDemoRouter)
   app.use('/api/settings', settingsRouter)
   app.use('/api/printing', printingRouter)
   app.use('/api/labels', labelsRouter)

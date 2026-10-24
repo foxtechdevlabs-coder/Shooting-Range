@@ -7,11 +7,12 @@ import { hash } from '@node-rs/argon2'
 import { runMigrations } from './migrate.js'
 import { getSqlite } from './connection.js'
 
-console.log('Running migrations...')
-runMigrations()
+export async function seedDemo() {
+  console.log('Running migrations...')
+  runMigrations()
 
-const db = getSqlite()
-const now = new Date().toISOString()
+  const db = getSqlite()
+  const now = new Date().toISOString()
 
 // Categories
 const categoryNames = ['Senior Men', 'Senior Women', 'Junior Men', 'Junior Women', 'Youth']
@@ -25,34 +26,34 @@ for (const name of categoryNames) {
     categoryIds[name] = Number(result.lastInsertRowid)
   }
 }
-console.log('✓ Categories seeded')
+  console.log('✓ Categories seeded')
 
 // Demo users
-const adminHash = await hash('Admin@1234')
-const staffHash = await hash('Staff@1234')
+  const adminHash = await hash('Admin@1234')
+  const staffHash = await hash('Staff@1234')
 
-const insertUser = db.prepare(`
+  const insertUser = db.prepare(`
   INSERT OR IGNORE INTO users (full_name, username, password_hash, role, permissions, active, must_change_password, created_at)
   VALUES (?, ?, ?, ?, ?, 1, ?, ?)
 `)
 
-insertUser.run(
+  insertUser.run(
   'Alex Morgan', 'admin', adminHash, 'admin', '[]', 1, now
 )
-insertUser.run(
+  insertUser.run(
   'Jordan Lee', 'staff', staffHash, 'staff',
   JSON.stringify(['participants.view', 'participants.create', 'participants.edit', 'import.use', 'barcodes.print', 'scan.use', 'transactions.view', 'reports.view', 'reports.export']),
   0, now
 )
-insertUser.run(
+  insertUser.run(
   'Sam Taylor', 'scanner', staffHash, 'staff',
   JSON.stringify(['scan.use', 'transactions.view']),
   0, now
 )
-console.log('✓ Demo users seeded (admin/Admin@1234, staff/Staff@1234, scanner/Staff@1234)')
+  console.log('✓ Demo users seeded (admin/Admin@1234, staff/Staff@1234, scanner/Staff@1234)')
 
 // Demo participants
-const names = [
+  const names = [
   'Aarav Sharma', 'Ananya Patel', 'Vivaan Kumar', 'Diya Nair', 'Arjun Singh',
   'Meera Reddy', 'Ishaan Gupta', 'Saanvi Rao', 'Aditya Joshi', 'Aditi Verma',
   'Kabir Menon', 'Ira Desai', 'Reyansh Das', 'Myra Iyer', 'Krishna Shah',
@@ -62,16 +63,16 @@ const names = [
   'Arnav Mishra', 'Ishita Sen', 'Samarth Rao', 'Mira Dutta', 'Yash Thakur',
   'Nisha Mathew', 'Devika Nair', 'Om Prakash', 'Zoya Khan', 'Rahul Shetty',
 ]
-const nocs = ['IND', 'IND', 'IND', 'IND', 'NEP', 'SRI', 'BAN', 'IND']
-const departments = ['Air Rifle', 'Air Pistol', 'Smallbore Rifle', 'Pistol', 'Trap & Skeet']
+  const nocs = ['IND', 'IND', 'IND', 'IND', 'NEP', 'SRI', 'BAN', 'IND']
+  const departments = ['Air Rifle', 'Air Pistol', 'Smallbore Rifle', 'Pistol', 'Trap & Skeet']
 
-const insertParticipant = db.prepare(`
+  const insertParticipant = db.prepare(`
   INSERT OR IGNORE INTO participants (bib_number, noc, name, department, gun_number, contact_number, category_id, pouch_status, label_printed, created_at, updated_at)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
 `)
 
-const catNames = Object.keys(categoryIds)
-for (let i = 0; i < names.length; i++) {
+  const catNames = Object.keys(categoryIds)
+  for (let i = 0; i < names.length; i++) {
   const bib = String(101 + i)
   const gun = `G-${String(201 + i).padStart(3, '0')}`
   const catName = catNames[i % catNames.length]
@@ -89,10 +90,15 @@ for (let i = 0; i < names.length; i++) {
     now
   )
 }
-console.log('✓ 40 demo participants seeded')
+  console.log('✓ 40 demo participants seeded')
 
 // Seed activity log
-const adminUser = db.prepare('SELECT id FROM users WHERE username = ?').get('admin') as { id: number }
-db.prepare(`INSERT INTO activity_log (user_id, action, entity, entity_id, created_at) VALUES (?, 'DEMO_SEED', 'system', NULL, ?)`).run(adminUser?.id ?? 1, now)
-console.log('✓ Demo seed complete.')
-process.exit(0)
+  const adminUser = db.prepare('SELECT id FROM users WHERE username = ?').get('admin') as { id: number }
+  db.prepare(`INSERT INTO activity_log (user_id, action, entity, entity_id, created_at) VALUES (?, 'DEMO_SEED', 'system', NULL, ?)`).run(adminUser?.id ?? null, now)
+  console.log('✓ Demo seed complete.')
+}
+
+if (process.argv[1]?.replace(/\\/g, '/').endsWith('/seed.demo.ts') || process.argv[1]?.replace(/\\/g, '/').endsWith('/seed.demo.js')) {
+  await seedDemo()
+  process.exit(0)
+}

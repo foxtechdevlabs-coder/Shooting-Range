@@ -4,6 +4,7 @@ import { getSqlite } from '../db/connection.js'
 import { requireAuth, requirePermission } from '../middleware/auth.js'
 import { apiError } from '../middleware/errorHandler.js'
 import type { Participant } from '../db/schema.js'
+import { effectiveTransactions } from '../services/effectiveTransactions.js'
 
 export const scanRouter = Router()
 scanRouter.use(requireAuth)
@@ -51,11 +52,9 @@ scanRouter.post('/', (req, res, next) => {
     const windowStart = new Date(Date.now() - windowSecs * 1000).toISOString()
 
     if (!body.confirm) {
-      const recentScan = db.prepare(`
-        SELECT id FROM transactions
-        WHERE participant_id = ? AND created_at >= ?
-        ORDER BY created_at DESC LIMIT 1
-      `).get(participant.id, windowStart)
+      const recentScan = effectiveTransactions(db, participant.id)
+        .filter((row) => row.created_at >= windowStart && row.status !== 'voided')
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
 
       if (recentScan) {
         res.status(409).json({
@@ -120,14 +119,7 @@ scanRouter.get('/summary', (req, res, next) => {
 scanRouter.get('/recent', (req, res, next) => {
   try {
     const db = getSqlite()
-    const rows = db.prepare(`
-      SELECT t.*, p.name as participant_name, p.bib_number, p.noc, u.full_name as user_name
-      FROM transactions t
-      LEFT JOIN participants p ON p.id = t.participant_id
-      LEFT JOIN users u ON u.id = t.user_id
-      ORDER BY t.created_at DESC
-      LIMIT 10
-    `).all()
+    const rows = effectiveTransactions(db).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 10)
     res.json({ data: rows })
   } catch (err) { next(err) }
 })
