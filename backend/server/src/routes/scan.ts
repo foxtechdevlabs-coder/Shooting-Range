@@ -4,7 +4,7 @@ import { getSqlite } from '../db/connection.js'
 import { requireAuth, requirePermission } from '../middleware/auth.js'
 import { apiError } from '../middleware/errorHandler.js'
 import type { Participant } from '../db/schema.js'
-import { effectiveTransactions } from '../services/effectiveTransactions.js'
+import { effectiveTransactionSelect } from '../services/effectiveTransactions.js'
 
 export const scanRouter = Router()
 scanRouter.use(requireAuth)
@@ -52,9 +52,9 @@ scanRouter.post('/', (req, res, next) => {
     const windowStart = new Date(Date.now() - windowSecs * 1000).toISOString()
 
     if (!body.confirm) {
-      const recentScan = effectiveTransactions(db, participant.id)
-        .filter((row) => row.created_at >= windowStart && row.status !== 'voided')
-        .sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
+      const recentScan = db.prepare(`${effectiveTransactionSelect(`t.participant_id = ? AND COALESCE(json_extract(c.new_values, '$.created_at'), t.created_at) >= ?
+        AND c.action IS NOT 'void' AND json_extract(c.new_values, '$.voided') IS NOT 1`)}
+        ORDER BY created_at DESC, t.id DESC LIMIT 1`).get(participant.id, windowStart)
 
       if (recentScan) {
         res.status(409).json({
@@ -119,7 +119,21 @@ scanRouter.get('/summary', (req, res, next) => {
 scanRouter.get('/recent', (req, res, next) => {
   try {
     const db = getSqlite()
-    const rows = effectiveTransactions(db).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 10)
+    const rows = db.prepare(`
+      WITH candidate_ids AS (
+        SELECT id FROM transactions
+        WHERE source = 'correction' OR id IN (SELECT transaction_id FROM corrections WHERE transaction_id IS NOT NULL)
+        UNION
+        SELECT id FROM (
+          SELECT t.id FROM transactions t
+          WHERE t.source != 'correction'
+            AND NOT EXISTS (SELECT 1 FROM corrections c WHERE c.transaction_id = t.id)
+          ORDER BY t.created_at DESC, t.id DESC LIMIT 10
+        )
+      )
+      ${effectiveTransactionSelect('t.id IN (SELECT id FROM candidate_ids)')}
+      ORDER BY created_at DESC, t.id DESC LIMIT 10
+    `).all()
     res.json({ data: rows })
   } catch (err) { next(err) }
 })

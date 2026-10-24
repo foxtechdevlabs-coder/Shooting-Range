@@ -10,6 +10,9 @@ export declare function getBackupStatus(): {
     lastManualBackupAt: string;
     hoursSinceManualBackup: number | null;
     lastAutomaticBackupAt: string;
+    lastAutoBackupAt: string;
+    lastAutoBackupError: string | null;
+    nextScheduledCheckAt: string;
     backupFolder: string;
 };
 export declare function runAutomaticBackup(force?: boolean): Promise<{

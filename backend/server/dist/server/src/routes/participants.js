@@ -10,13 +10,14 @@ export const participantsRouter = Router();
 participantsRouter.use(requireAuth);
 const previews = new Map();
 // Clean up expired previews every 5 minutes
-setInterval(() => {
+const previewCleanupTimer = setInterval(() => {
     const cutoff = Date.now() - 30 * 60 * 1000;
     for (const [id, entry] of previews.entries()) {
         if (entry.createdAt < cutoff)
             previews.delete(id);
     }
 }, 5 * 60 * 1000);
+previewCleanupTimer.unref();
 function formatParticipant(p) {
     return {
         id: p.id,
@@ -45,7 +46,7 @@ const querySchema = z.object({
     pouch_status: z.enum(['in', 'out']).optional(),
     label_status: z.enum(['all', 'printed', 'unprinted', 'stale']).optional(),
     page: z.coerce.number().int().nonnegative().default(0),
-    limit: z.coerce.number().int().positive().max(500).default(20),
+    limit: z.coerce.number().int().positive().max(200).default(20),
     sort: z.enum(['bib_number', 'name', 'noc', 'gun_number', 'created_at', 'pouch_status']).default('bib_number'),
     order: z.enum(['asc', 'desc']).default('asc'),
 });

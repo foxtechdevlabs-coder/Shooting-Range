@@ -10,7 +10,7 @@ activityRouter.get('/', (req, res, next) => {
         const query = z.object({
             from: z.string().optional(), to: z.string().optional(), user_id: z.coerce.number().int().positive().optional(),
             action: z.string().optional(), entity: z.string().optional(),
-            page: z.coerce.number().int().nonnegative().default(0), limit: z.coerce.number().int().positive().max(500).default(50),
+            page: z.coerce.number().int().nonnegative().default(0), limit: z.coerce.number().int().positive().max(200).default(50),
         }).parse(req.query);
         const conditions = [];
         const params = [];

@@ -18,8 +18,10 @@ export function getDb() {
     fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
     _sqlite = new BetterSQLite3(config.dbPath);
     _sqlite.pragma('journal_mode = WAL');
+    _sqlite.pragma('synchronous = NORMAL');
     _sqlite.pragma('foreign_keys = ON');
     _sqlite.pragma('busy_timeout = 5000');
+    _sqlite.pragma('cache_size = -64000');
     _db = drizzle(_sqlite, { schema });
     return _db;
 }

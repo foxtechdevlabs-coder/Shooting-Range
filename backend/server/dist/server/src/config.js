@@ -10,7 +10,7 @@ export const config = {
             : path.resolve(__dirname, '../../data');
     },
     get dbPath() {
-        return path.join(this.dataDir, 'shootingrange.db');
+        return process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.join(this.dataDir, 'shootingrange.db');
     },
     isProduction: process.env.NODE_ENV === 'production',
     cookieSecret: process.env.COOKIE_SECRET ?? 'dev-secret-change-in-production',

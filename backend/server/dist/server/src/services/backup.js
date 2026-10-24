@@ -63,12 +63,16 @@ export function pruneBackups(folder) {
 export function getBackupStatus() {
     const db = getSqlite();
     const values = Object.fromEntries(db.prepare(`SELECT key, value FROM settings WHERE key IN
-    ('last_manual_backup_at', 'last_automatic_backup_at')`).all().map((row) => [row.key, row.value]));
+    ('last_manual_backup_at', 'last_auto_backup_at', 'last_automatic_backup_at', 'last_auto_backup_error', 'next_auto_backup_check_at')`).all().map((row) => [row.key, row.value]));
     const lastManualBackupAt = values.last_manual_backup_at ?? null;
+    const checkIntervalMs = Math.max(1, Number(process.env.AUTO_BACKUP_CHECK_MINUTES ?? 15)) * 60_000;
     return {
         lastManualBackupAt,
         hoursSinceManualBackup: lastManualBackupAt ? Math.max(0, (Date.now() - Date.parse(lastManualBackupAt)) / 3600000) : null,
-        lastAutomaticBackupAt: values.last_automatic_backup_at ?? null,
+        lastAutomaticBackupAt: values.last_auto_backup_at ?? values.last_automatic_backup_at ?? null,
+        lastAutoBackupAt: values.last_auto_backup_at ?? values.last_automatic_backup_at ?? null,
+        lastAutoBackupError: values.last_auto_backup_error || null,
+        nextScheduledCheckAt: values.next_auto_backup_check_at ?? new Date(Date.now() + checkIntervalMs).toISOString(),
         backupFolder: defaultBackupFolder(),
     };
 }

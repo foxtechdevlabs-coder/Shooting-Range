@@ -19,4 +19,6 @@ export interface EffectiveTransaction {
     corrected_at?: string;
 }
 export declare function effectiveTransactions(db: BetterSQLite3.Database, participantId?: number): EffectiveTransaction[];
+export declare function effectiveTransactionSelect(where?: string): string;
+export declare function iterateEffectiveTransactions(db: BetterSQLite3.Database, where?: string, params?: Array<string | number>, orderBy?: string): IterableIterator<EffectiveTransaction>;
 export declare function resultingPouchStatus(rows: EffectiveTransaction[]): 'in' | 'out';

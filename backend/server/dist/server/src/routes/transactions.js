@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getSqlite } from '../db/connection.js';
 import { requireAuth, requirePermission } from '../middleware/auth.js';
-import { effectiveTransactions } from '../services/effectiveTransactions.js';
+import { effectiveTransactionSelect } from '../services/effectiveTransactions.js';
 export const transactionsRouter = Router();
 transactionsRouter.use(requireAuth);
 transactionsRouter.use(requirePermission('transactions.view'));
@@ -16,25 +16,55 @@ const querySchema = z.object({
     from: z.string().optional(),
     to: z.string().optional(),
     page: z.coerce.number().int().nonnegative().default(0),
-    limit: z.coerce.number().int().positive().max(500).default(20),
+    limit: z.coerce.number().int().positive().max(200).default(20),
 });
 transactionsRouter.get('/', (req, res, next) => {
     try {
         const query = querySchema.parse(req.query);
-        const search = query.search?.toLowerCase();
-        const from = query.from ? `${query.from}T00:00:00.000Z` : undefined;
-        const to = query.to ? `${query.to}T23:59:59.999Z` : undefined;
-        const rows = effectiveTransactions(getSqlite()).filter((row) => (!search || `${row.participant_name ?? ''} ${row.bib_number ?? ''} ${row.gun_number}`.toLowerCase().includes(search)) &&
-            (!query.participant_id || row.participant_id === query.participant_id) &&
-            (!query.gun_number || row.gun_number.toLowerCase() === query.gun_number.toLowerCase()) &&
-            (!query.type || row.type === query.type) &&
-            (!query.status || row.status === query.status) &&
-            (!query.user_id || row.user_id === query.user_id) &&
-            (!from || row.created_at >= from) &&
-            (!to || row.created_at <= to))
-            .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id);
-        const total = rows.length;
-        const data = rows.slice(query.page * query.limit, (query.page + 1) * query.limit);
+        const conditions = [];
+        const params = [];
+        const effectiveTime = "COALESCE(json_extract(c.new_values, '$.created_at'), t.created_at)";
+        const effectiveType = "COALESCE(json_extract(c.new_values, '$.type'), t.type)";
+        const effectiveStatus = "CASE WHEN c.action = 'void' OR json_extract(c.new_values, '$.voided') = 1 THEN 'voided' WHEN c.id IS NOT NULL OR t.source = 'correction' THEN 'corrected' ELSE 'valid' END";
+        if (query.search) {
+            conditions.push('(p.name LIKE ? OR p.bib_number LIKE ? OR t.gun_number LIKE ?)');
+            const search = `%${query.search}%`;
+            params.push(search, search, search);
+        }
+        if (query.participant_id) {
+            conditions.push('t.participant_id = ?');
+            params.push(query.participant_id);
+        }
+        if (query.gun_number) {
+            conditions.push('t.gun_number = ? COLLATE NOCASE');
+            params.push(query.gun_number);
+        }
+        if (query.type) {
+            conditions.push(`${effectiveType} = ?`);
+            params.push(query.type);
+        }
+        if (query.status) {
+            conditions.push(`${effectiveStatus} = ?`);
+            params.push(query.status);
+        }
+        if (query.user_id) {
+            conditions.push('t.user_id = ?');
+            params.push(query.user_id);
+        }
+        if (query.from) {
+            conditions.push(`${effectiveTime} >= ?`);
+            params.push(`${query.from}T00:00:00.000Z`);
+        }
+        if (query.to) {
+            conditions.push(`${effectiveTime} <= ?`);
+            params.push(`${query.to}T23:59:59.999Z`);
+        }
+        const where = conditions.length ? conditions.join(' AND ') : '1 = 1';
+        const db = getSqlite();
+        const select = effectiveTransactionSelect(where);
+        const total = db.prepare(`SELECT COUNT(*) AS total FROM (${select}) effective_rows`).get(...params).total;
+        const data = db.prepare(`${select} ORDER BY created_at DESC, t.id DESC LIMIT ? OFFSET ?`)
+            .all(...params, query.limit, query.page * query.limit);
         res.json({ data, total, page: query.page, limit: query.limit });
     }
     catch (err) {

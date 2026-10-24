@@ -10,6 +10,8 @@
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/db/seed.ts",
     "seed:demo": "tsx src/db/seed.demo.ts",
+    "seed:load": "tsx scripts/loadtest-seed.ts",
+    "benchmark": "tsx scripts/benchmark.ts",
     "test": "vitest run"
   },
   "dependencies": {

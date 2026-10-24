@@ -64,6 +64,8 @@ describe('transaction corrections', () => {
         expect(getSqlite().prepare('SELECT pouch_status FROM participants WHERE id = ?').get(participantId).pouch_status).toBe('out');
         const effective = await admin.get('/api/transactions').query({ participant_id: participantId });
         expect(effective.body.data.filter((row) => row.source === 'correction')).toHaveLength(1);
+        const auditLog = await admin.get('/api/corrections');
+        expect(auditLog.body.data[0]).toMatchObject({ action: 'add', participant_id: participantId, participant_name: 'Correction Athlete' });
     });
     it('enforces correction permissions and admin-only reports', async () => {
         const staff = await loginAs('staff', 'StaffPass123');

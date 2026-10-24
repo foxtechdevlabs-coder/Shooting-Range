@@ -34,11 +34,13 @@ type StoredCorrection = {
 type CorrectionValues = { type?: 'in' | 'out'; created_at?: string; voided?: boolean }
 
 export function effectiveTransactions(db: BetterSQLite3.Database, participantId?: number): EffectiveTransaction[] {
-  const latestCorrections = db.prepare(`
+  const latestCorrectionSql = `
     SELECT c.* FROM corrections c
-    JOIN (SELECT transaction_id, MAX(id) AS max_id FROM corrections WHERE transaction_id IS NOT NULL GROUP BY transaction_id) latest
-      ON latest.max_id = c.id
-  `).all() as StoredCorrection[]
+    JOIN (SELECT transaction_id, MAX(id) AS max_id FROM corrections
+      WHERE transaction_id IN (SELECT id FROM transactions ${participantId ? 'WHERE participant_id = ?' : ''})
+      GROUP BY transaction_id) latest ON latest.max_id = c.id
+  `
+  const latestCorrections = db.prepare(latestCorrectionSql).all(...(participantId ? [participantId] : [])) as StoredCorrection[]
   const correctionByTransaction = new Map(latestCorrections.map((row) => [row.transaction_id!, row]))
   const baseRows = db.prepare(`
     SELECT t.*, p.name AS participant_name, p.bib_number, p.noc, u.full_name AS user_name
@@ -63,7 +65,9 @@ export function effectiveTransactions(db: BetterSQLite3.Database, participantId?
       corrected_at: correction.created_at,
     }
   })
-  const addRows = db.prepare(`SELECT c.* FROM corrections c WHERE c.action = 'add'`).all() as StoredCorrection[]
+  const addRows = db.prepare(`SELECT c.* FROM corrections c WHERE c.action = 'add'
+    ${participantId ? "AND CAST(json_extract(c.new_values, '$.participant_id') AS INTEGER) = ?" : ''}`)
+    .all(...(participantId ? [participantId] : [])) as StoredCorrection[]
   for (const correction of addRows) {
     const values = JSON.parse(correction.new_values) as CorrectionValues & {
       participant_id: number; gun_number: string; user_id: number; transaction_id?: number
@@ -99,6 +103,27 @@ export function effectiveTransactions(db: BetterSQLite3.Database, participantId?
     })
   }
   return rows.sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id)
+}
+
+export function effectiveTransactionSelect(where = '1 = 1') {
+  return `SELECT t.id, t.participant_id, t.gun_number,
+      COALESCE(json_extract(c.new_values, '$.type'), t.type) AS type,
+      COALESCE(json_extract(c.new_values, '$.created_at'), t.created_at) AS created_at,
+      t.user_id, t.manual_entry, t.source, p.name AS participant_name, p.bib_number, p.noc, u.full_name AS user_name,
+      CASE WHEN c.action = 'void' OR json_extract(c.new_values, '$.voided') = 1 THEN 'voided'
+        WHEN c.id IS NOT NULL OR t.source = 'correction' THEN 'corrected' ELSE 'valid' END AS status,
+      t.type AS original_type, c.reason AS correction_reason, c.user_id AS corrected_by, c.created_at AS corrected_at
+    FROM transactions t
+    LEFT JOIN participants p ON p.id = t.participant_id
+    LEFT JOIN users u ON u.id = t.user_id
+    LEFT JOIN (SELECT transaction_id, MAX(id) AS max_id FROM corrections
+      WHERE transaction_id IS NOT NULL GROUP BY transaction_id) latest ON latest.transaction_id = t.id
+    LEFT JOIN corrections c ON c.id = latest.max_id
+    WHERE ${where}`
+}
+
+export function iterateEffectiveTransactions(db: BetterSQLite3.Database, where = '1 = 1', params: Array<string | number> = [], orderBy = 'created_at ASC, t.id ASC') {
+  return db.prepare(`${effectiveTransactionSelect(where)} ORDER BY ${orderBy}`).iterate(...params) as IterableIterator<EffectiveTransaction>
 }
 
 export function resultingPouchStatus(rows: EffectiveTransaction[]): 'in' | 'out' {
