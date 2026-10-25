@@ -101,6 +101,18 @@ export function ScanPage() {
     }
   }
   useEffect(() => { inputRef.current?.focus() }, [])
+  // Barcode scanners behave like keyboards: when the window is activated (or the
+  // user clicks back into the app) the scan input must be focused again so the
+  // next scan lands in the right field.
+  useEffect(() => {
+    const refocus = () => { if (!busy) inputRef.current?.focus() }
+    window.addEventListener('focus', refocus)
+    document.addEventListener('visibilitychange', refocus)
+    return () => {
+      window.removeEventListener('focus', refocus)
+      document.removeEventListener('visibilitychange', refocus)
+    }
+  }, [busy])
   useEffect(() => {
     const keepFocus = (event: PointerEvent) => {
       if (!(event.target instanceof HTMLElement) || !event.target.closest('input,button,select,a')) inputRef.current?.focus()

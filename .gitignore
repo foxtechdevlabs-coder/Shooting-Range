@@ -1,0 +1,48 @@
+# ── Dependencies ─────────────────────────────────────────────────────────────
+node_modules/
+**/node_modules/
+
+# ── Build output ─────────────────────────────────────────────────────────────
+dist/
+**/dist/
+build/out/
+release/
+out/
+
+# ── Runtime data (never commit databases or backups) ─────────────────────────
+backend/data/
+backend/server/data/
+**/data/load-test/
+**/data/backups/
+**/data/labels/
+**/data/logs/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+
+# ── Environment / secrets ────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+*.p12
+
+# ── Test / tooling artifacts ─────────────────────────────────────────────────
+coverage/
+.vitest-cache/
+.vite/
+*.log
+logs/
+
+# ── Editor / OS noise ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.tsbuildinfo
+
+# ── Electron build scratch ───────────────────────────────────────────────────
+desktop/dist/
+electron-builder-debug.yml

@@ -9,7 +9,27 @@ import type { PrinterInfo } from '../../../shared/types.js'
 
 const execFileAsync = promisify(execFile)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const SCRIPT_PATH = path.join(__dirname, 'print-spool.ps1')
+const FALLBACK_SCRIPT_PATH = path.join(__dirname, 'print-spool.ps1')
+
+/**
+ * Resolve print-spool.ps1 to a real file on disk.
+ *
+ * In a packaged app the script is unpacked from app.asar
+ * (electron-builder `asarUnpack`) and the desktop shell passes its path through
+ * startServer({ printScriptPath }). If a path inside app.asar slips through,
+ * copy the script to the temp folder so PowerShell can execute it.
+ */
+function resolveSpoolScript(): string {
+  const configured = config.printScriptPath || FALLBACK_SCRIPT_PATH
+  if (!configured.includes('app.asar')) return configured
+  const target = path.join(os.tmpdir(), 'rangeops-print-spool.ps1')
+  try {
+    if (!fs.existsSync(target)) fs.copyFileSync(configured, target)
+    return target
+  } catch {
+    return configured
+  }
+}
 
 export class PrinterError extends Error {
   code: 'PRINTER_NOT_FOUND' | 'PRINTER_OFFLINE' | 'SPOOL_FAILED' | 'LABEL_TOO_WIDE'
@@ -29,7 +49,10 @@ export class PrinterError extends Error {
  */
 export function getEffectiveDriver(override?: string | null): 'windows' | 'file' {
   if (override === 'windows' || override === 'file') return override
-  if (process.env.PRINT_DRIVER === 'windows') return 'windows'
+  const fromEnv = process.env.PRINT_DRIVER
+  if (fromEnv === 'windows' || fromEnv === 'file') return fromEnv
+  // Packaged Windows builds talk to the spooler by default (NFR: real printer).
+  if (config.packaged && os.platform() === 'win32') return 'windows'
   return 'file'
 }
 
@@ -71,6 +94,23 @@ export async function listPrinters(): Promise<PrinterInfo[]> {
   }
 }
 
+/** Write the ZPL to <dataDir>/labels so a failed print still leaves a usable file. */
+function saveZplFallback(zpl: string): string | null {
+  try {
+    const labelsDir = config.labelsDir
+    fs.mkdirSync(labelsDir, { recursive: true })
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const suffix = Math.random().toString(36).slice(2, 8)
+    const filePath = path.join(labelsDir, `${stamp}-notprinted-${suffix}.zpl`)
+    fs.writeFileSync(filePath, zpl, { encoding: 'utf8' })
+    console.warn('[Printer] Printer unavailable; ZPL saved to', filePath)
+    return filePath
+  } catch (error) {
+    console.error('[Printer] Could not write ZPL fallback file:', error)
+    return null
+  }
+}
+
 export interface PrintOptions {
   printerName?: string
   driverOverride?: 'windows' | 'file'
@@ -95,7 +135,7 @@ export async function printZpl(
   const bytes = Buffer.byteLength(zpl, 'utf8')
 
   if (driver === 'file') {
-    const labelsDir = path.join(config.dataDir, 'labels')
+    const labelsDir = config.labelsDir
     if (!fs.existsSync(labelsDir)) {
       fs.mkdirSync(labelsDir, { recursive: true })
     }
@@ -110,14 +150,28 @@ export async function printZpl(
     return { driver: 'file', target: filePath, bytes }
   }
 
-  // Windows RAW print driver
+  try {
+    return await printViaWindowsSpooler(zpl, options, bytes)
+  } catch (error) {
+    // Any printer problem still leaves a usable label file behind.
+    if (error instanceof PrinterError) saveZplFallback(zpl)
+    throw error
+  }
+}
+
+/** Windows RAW (ZPL) printing through the spooler helper script. */
+async function printViaWindowsSpooler(zpl: string, options: PrintOptions | undefined, bytes: number): Promise<PrintResult> {
   if (os.platform() !== 'win32') {
     throw new PrinterError('SPOOL_FAILED', 'Windows print driver is only supported on Windows OS.')
   }
 
   const requestedName = options?.printerName?.trim()
   if (!requestedName) {
-    throw new PrinterError('PRINTER_NOT_FOUND', 'No printer name configured for Windows printing.')
+    throw new PrinterError(
+      'PRINTER_NOT_FOUND',
+      'No label printer is configured yet. Choose your printer in Settings → Barcode labels. ' +
+      'The label was saved to the labels folder instead.'
+    )
   }
 
   const installed = await listPrinters()
@@ -128,7 +182,8 @@ export async function printZpl(
   if (!matched) {
     throw new PrinterError(
       'PRINTER_NOT_FOUND',
-      `Printer "${requestedName}" not found in installed printers.`
+      `Printer "${requestedName}" was not found on this computer. Check it in Settings → Barcode labels. ` +
+      'The label was saved to the labels folder instead.'
     )
   }
 
@@ -157,7 +212,7 @@ export async function printZpl(
         '-ExecutionPolicy',
         'Bypass',
         '-File',
-        SCRIPT_PATH,
+        resolveSpoolScript(),
         matched.name,
         tempPath,
       ],

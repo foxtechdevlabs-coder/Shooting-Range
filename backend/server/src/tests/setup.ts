@@ -38,8 +38,8 @@ beforeAll(async () => {
   db.prepare(`INSERT INTO users (full_name, username, password_hash, role, permissions, active, must_change_password, created_at) VALUES (?, 'noperm', ?, 'staff', '[]', 1, 0, ?)`).run('No Perm User', staffHash, now)
 
 
-  // Category
-  db.prepare(`INSERT INTO categories (name, active) VALUES ('Senior Men', 1)`).run()
+  // Category (migration 0006 already seeds the default competition categories)
+  db.prepare(`INSERT OR IGNORE INTO categories (name, active) VALUES ('Senior Men', 1)`).run()
 
   // Participant for scan tests
   db.prepare(`INSERT INTO participants (bib_number, noc, name, gun_number, category_id, pouch_status, label_printed, created_at, updated_at) VALUES ('101', 'IND', 'Test Athlete', 'G-201', 1, 'in', 0, ?, ?)`).run(now, now)

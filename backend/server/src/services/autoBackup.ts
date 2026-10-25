@@ -189,7 +189,20 @@ export function createAutoBackupService(options: AutoBackupServiceOptions = {}) 
     return shutdownPromise
   }
 
-  const service = { start, runBackup, runStartupCheck, runDailyCheck, shutdown, listAutomaticBackups }
+  /**
+   * Stop the timer without running a new backup, but wait for an in-flight
+   * backup to finish so the database is not closed underneath it.
+   */
+  async function dispose() {
+    shuttingDown = true
+    if (timer) clearInterval(timer)
+    timer = undefined
+    if (backupTask) {
+      try { await backupTask } catch { /* already logged in performBackup */ }
+    }
+  }
+
+  const service = { start, runBackup, runStartupCheck, runDailyCheck, shutdown, dispose, listAutomaticBackups }
   return service
 }
 
@@ -200,4 +213,11 @@ export function startAutoBackup(options?: AutoBackupServiceOptions) {
 
 export async function runShutdownBackup() {
   await activeService?.shutdown()
+}
+
+/** Stop the automatic backup timer (used when the HTTP server stops). */
+export async function stopAutoBackup(): Promise<void> {
+  const service = activeService
+  activeService = undefined
+  await service?.dispose()
 }

@@ -1,0 +1,157 @@
+========================================================================
+ SHOOTING RANGE SYSTEM  —  INSTALLATION AND FIRST-TIME SETUP
+ Version {{VERSION}}
+========================================================================
+
+What you need
+-------------
+  * A Windows 10 or Windows 11 PC, 64-bit.
+  * This pen drive.
+  * NO internet connection is required at any point — not to install,
+    not to run, not to update.
+  * You do NOT need Node.js, a database server, or administrator rights
+    to install the application itself.
+
+
+1. INSTALL THE APPLICATION
+--------------------------
+  1. Plug the pen drive into the PC.
+  2. Open the folder "PenDrive" on the pen drive.
+  3. Double-click:  {{INSTALLER}}
+  4. Windows may show a blue "Windows protected your PC" box
+     (SmartScreen). This is normal for installers that are not
+     digitally signed.
+        -> Click "More info", then "Run anyway".
+  5. Choose the installation folder if you want to change it
+     (the default is fine for most PCs), then click "Install".
+  6. Leave "Run Shooting Range System" ticked and click "Finish".
+
+  The installation takes about 2 minutes. Everything is installed for the
+  current Windows user, so no administrator password is needed.
+
+  Optional, to prove the file is intact:
+     right-click SHA256SUMS.txt -> open with Notepad, and compare the
+     checksum with:  certutil -hashfile {{INSTALLER}} SHA256
+     (Open Command Prompt in the PenDrive folder to run that command.)
+
+
+2. FIRST START — CREATE THE ADMINISTRATOR
+-----------------------------------------
+  On the very first start the app shows "Set up this installation".
+  Enter:
+     Full name        e.g. Alex Morgan
+     Username         e.g. admin
+     Password         at least 10 characters
+     Repeat password
+  Click "Create administrator". You are signed in automatically.
+
+  This screen appears only once. The account it creates is the
+  administrator and cannot be recovered if the password is lost, so write
+  the password down and keep it safe.
+
+  Packaged installations start with NO sample data. If you want sample
+  data for training, an administrator can load it later from
+  Settings -> Demo data -> "Load demo data" (it replaces current data).
+
+
+3. SET UP THE BARCODE PRINTER (optional)
+----------------------------------------
+  If you print pouch labels on a Zebra ZD220:
+     1. Install the Zebra driver — see drivers\README.txt. This is the
+        only step that needs an administrator account.
+     2. In the app: Settings -> Barcode labels
+           Printer      : your ZD220 (exact name as in Windows)
+           Driver       : Windows spooler
+           Label size   : match the labels you loaded
+           Darkness/speed: defaults are fine to start
+     3. Click "Print test label" and check the output.
+
+  Without a printer the app still works: labels are written as .zpl
+  files into the "labels" folder inside the data folder (see below), and
+  the Barcode page shows a warning that links back to Settings.
+
+  Barcode scanner (QBT2500 or any USB scanner): set it to USB keyboard
+  (HID) mode. Scan into the Scan Station page; the input box keeps the
+  focus automatically.
+
+
+4. WHERE YOUR DATA LIVES
+------------------------
+  Your data is NOT stored in the program folder, so uninstalling or
+  upgrading never touches it. By default:
+
+     C:\Users\<your-name>\AppData\Roaming\Shooting Range System\data\
+
+  Inside that folder:
+     shootingrange.db        the database (participants, scans, users)
+     backups\                automatic + manual backups
+                             (shutdown, daily and pre-upgrade copies)
+     labels\                 .zpl label files when printing to file
+     logs\                   support logs (rotating, max 5 x 5 MB)
+
+  Settings -> About shows this path and has an "Open" button.
+
+  IMPORTANT: the data folder belongs to ONE Windows account. Always use
+  the same Windows user on this PC. If you sign in as a different Windows
+  user, the app will look like it is empty.
+
+  Moving the data to a shared location later (advanced):
+     Create the file
+       C:\Users\<your-name>\AppData\Roaming\Shooting Range System\data-location.json
+     with this content (one line):
+       { "dataDir": "D:\\RangeData\\ShootingRange" }
+     ...or set the environment variable  SHOOTINGRANGE_DATA_DIR
+     to the same folder. The environment variable wins if both exist.
+     Close the app before moving the folder, then copy the whole "data"
+     folder to the new location.
+
+  Backups: to keep a copy on a pen drive, set
+     Settings -> Workspace data -> "Automatic backup folder" -> Choose...
+     to a folder on the pen drive. If the pen drive is removed during a
+     write, the app reports a clear error and keeps working.
+
+
+5. HOW TO UPDATE
+----------------
+  1. Close the app (it writes a shutdown backup automatically).
+  2. Run the newer installer from the pen drive. It upgrades in place -
+     do NOT uninstall first.
+  3. Start the app. Your database, users and backups are kept.
+  4. If the update contains database changes, the app first saves a copy
+     named  backups\pre-migration-<version>-<date>.db  and only then
+     upgrades the database. If the upgrade fails, the app restores that
+     copy and shows an error instead of starting half-upgraded.
+
+  Uninstalling the app also keeps your data folder, so reinstalling later
+  finds your data again.
+
+
+6. IF SOMETHING GOES WRONG — SUPPORT LOGS
+-----------------------------------------
+  1. Sign in as an administrator.
+  2. Settings -> About -> "Export support logs".
+  3. Choose a folder on the pen drive. The app copies the logs there in
+     a folder named ShootingRange-logs-<date>.
+  4. Send that folder with a short description of the problem.
+  Logs never contain passwords or session identifiers.
+
+
+7. QUICK TROUBLESHOOTING
+------------------------
+  "Windows protected your PC"          -> More info -> Run anyway
+                                          (installer is not code-signed)
+  App does not start                   -> Settings -> About ->
+                                          "Export support logs"; the error
+                                          dialog also shows the log path
+  Labels do not print                  -> Settings -> Barcode labels:
+                                          check the printer name and driver,
+                                          then "Print test label"
+  Data looks empty                     -> You may be signed in to a different
+                                          Windows account; see section 4
+  Forgotten admin password             -> There is no password reset without
+                                          an admin login. Restore a backup
+                                          (Settings -> Workspace data ->
+                                          Restore from file) or contact
+                                          support with your backup folder
+
+========================================================================

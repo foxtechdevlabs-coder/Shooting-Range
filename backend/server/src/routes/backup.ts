@@ -67,7 +67,7 @@ function validateDatabaseFile(filePath: string) {
 }
 
 backupRouter.get('/status', (_req, res, next) => {
-  try { res.json({ ...getBackupStatus(), allowDemoReset: process.env.ALLOW_DEMO_RESET === 'true' }) } catch (error) { next(error) }
+  try { res.json({ ...getBackupStatus(), allowDemoReset: demoDataAllowed() }) } catch (error) { next(error) }
 })
 
 backupRouter.post('/', async (req, res, next) => {
@@ -190,8 +190,17 @@ fullExportRouter.get('/all', requireAuth, requireAdmin, async (req, res, next) =
   } catch (error) { next(error) }
 })
 
+/**
+ * Demo data is opt-in: allowed when the operator enabled it explicitly, and in
+ * packaged desktop installs, where the admin chooses it in Settings with a
+ * confirmation (nothing is seeded automatically).
+ */
+function demoDataAllowed(): boolean {
+  return process.env.ALLOW_DEMO_RESET === 'true' || config.packaged
+}
+
 resetDemoRouter.post('/reset-demo', requireAuth, requireAdmin, (_req, res, next) => {
-  if (process.env.ALLOW_DEMO_RESET !== 'true') {
+  if (!demoDataAllowed()) {
     res.status(403).json({ error: { code: 'DEMO_RESET_DISABLED', message: 'Demo reset is disabled on this server.' } })
     return
   }
