@@ -1,14 +1,17 @@
 import { ZodError } from 'zod';
 export function errorHandler(err, req, res, next) {
-    // Log full error server-side
-    console.error('[ERROR]', err);
     // Already responded
     if (res.headersSent) {
+        console.error('[ERROR]', err);
         next(err);
         return;
     }
     // Zod validation errors
     if (err instanceof ZodError) {
+        console.warn('[WARN] VALIDATION_ERROR', err.issues.map((issue) => ({
+            path: issue.path.join('.'),
+            message: issue.message,
+        })));
         const fields = {};
         for (const issue of err.issues) {
             const key = issue.path.join('.');
@@ -23,6 +26,7 @@ export function errorHandler(err, req, res, next) {
         });
         return;
     }
+    console.error('[ERROR]', err);
     // Known API errors with a status
     if (typeof err === 'object' &&
         err !== null &&

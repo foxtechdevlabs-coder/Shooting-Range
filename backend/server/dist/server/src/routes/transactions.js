@@ -17,6 +17,8 @@ const querySchema = z.object({
     to: z.string().optional(),
     page: z.coerce.number().int().nonnegative().default(0),
     limit: z.coerce.number().int().positive().max(200).default(20),
+    sort: z.enum(['created_at', 'participant_name', 'gun_number', 'type', 'user_name']).default('created_at'),
+    order: z.enum(['asc', 'desc']).default('desc'),
 });
 transactionsRouter.get('/', (req, res, next) => {
     try {
@@ -63,7 +65,14 @@ transactionsRouter.get('/', (req, res, next) => {
         const db = getSqlite();
         const select = effectiveTransactionSelect(where);
         const total = db.prepare(`SELECT COUNT(*) AS total FROM (${select}) effective_rows`).get(...params).total;
-        const data = db.prepare(`${select} ORDER BY created_at DESC, t.id DESC LIMIT ? OFFSET ?`)
+        const sortColumns = {
+            created_at: "COALESCE(json_extract(c.new_values, '$.created_at'), t.created_at)",
+            participant_name: 'p.name',
+            gun_number: 't.gun_number',
+            type: effectiveType,
+            user_name: 'u.full_name',
+        };
+        const data = db.prepare(`${select} ORDER BY ${sortColumns[query.sort]} ${query.order.toUpperCase()}, t.id ${query.order.toUpperCase()} LIMIT ? OFFSET ?`)
             .all(...params, query.limit, query.page * query.limit);
         res.json({ data, total, page: query.page, limit: query.limit });
     }

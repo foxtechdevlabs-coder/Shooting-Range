@@ -117,7 +117,7 @@ participantsRouter.get('/', requirePermission('participants.view'), (req, res, n
       FROM participants p
       LEFT JOIN categories c ON c.id = p.category_id
       ${where}
-      ORDER BY p.${sortCol} ${order}
+      ORDER BY p.${sortCol} ${order}, p.id ${order}
       LIMIT ? OFFSET ?
     `).all(...params, query.limit, query.page * query.limit) as (Participant & { category_name: string })[]
 

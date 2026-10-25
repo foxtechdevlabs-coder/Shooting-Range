@@ -29,8 +29,14 @@ function formatUser(u: User) {
 usersRouter.get('/', (req, res, next) => {
   try {
     const db = getSqlite()
-    const users = db.prepare('SELECT * FROM users ORDER BY id').all() as User[]
-    res.json({ data: users.map(formatUser) })
+    const query = z.object({
+      page: z.coerce.number().int().nonnegative().default(0),
+      limit: z.coerce.number().int().positive().max(200).default(50),
+    }).parse(req.query)
+    const total = (db.prepare('SELECT COUNT(*) AS total FROM users').get() as { total: number }).total
+    const active = (db.prepare('SELECT COUNT(*) AS total FROM users WHERE active = 1').get() as { total: number }).total
+    const users = db.prepare('SELECT * FROM users ORDER BY id LIMIT ? OFFSET ?').all(query.limit, query.page * query.limit) as User[]
+    res.json({ data: users.map(formatUser), total, active, page: query.page, limit: query.limit })
   } catch (err) { next(err) }
 })
 

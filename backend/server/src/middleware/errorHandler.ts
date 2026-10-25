@@ -7,17 +7,19 @@ import type { Request, Response, NextFunction } from 'express'
 import { ZodError } from 'zod'
 
 export function errorHandler(err: unknown, req: Request, res: Response, next: NextFunction): void {
-  // Log full error server-side
-  console.error('[ERROR]', err)
-
   // Already responded
   if (res.headersSent) {
+    console.error('[ERROR]', err)
     next(err)
     return
   }
 
   // Zod validation errors
   if (err instanceof ZodError) {
+    console.warn('[WARN] VALIDATION_ERROR', err.issues.map((issue) => ({
+      path: issue.path.join('.'),
+      message: issue.message,
+    })))
     const fields: Record<string, string> = {}
     for (const issue of err.issues) {
       const key = issue.path.join('.')
@@ -32,6 +34,8 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     })
     return
   }
+
+  console.error('[ERROR]', err)
 
   // Known API errors with a status
   if (

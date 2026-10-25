@@ -7,6 +7,7 @@ import { usersRouter } from './routes/users.js'
 import { categoriesRouter } from './routes/categories.js'
 import { participantsRouter } from './routes/participants.js'
 import { scanRouter } from './routes/scan.js'
+import { dashboardRouter } from './routes/dashboard.js'
 import { transactionsRouter } from './routes/transactions.js'
 import { settingsRouter } from './routes/settings.js'
 import { printingRouter } from './routes/printing.js'
@@ -57,6 +58,7 @@ export function createApp() {
   app.use('/api/participants/import', uploadLimiter)
   app.use('/api/participants', participantsRouter)
   app.use('/api/scan', scanRouter)
+  app.use('/api/dashboard', dashboardRouter)
   app.use('/api/transactions', transactionsRouter)
   app.use('/api', correctionsRouter)
   app.use('/api/activity', activityRouter)

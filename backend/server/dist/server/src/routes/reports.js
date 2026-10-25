@@ -49,6 +49,14 @@ async function sendWorkbook(res, reportName, filters, userName, query) {
     await piping;
 }
 function reportRoute(name, adminOnly, build) {
+    const searchColumns = {
+        Participants: ['bib_number', 'noc', 'name', 'department', 'gun_number', 'category', 'status'],
+        Transactions: ['timestamp', 'participant', 'bib_number', 'gun_number', 'type', 'user', 'status', 'correction_reason'],
+        'Pouches Out': ['bib_number', 'noc', 'name', 'gun_number', 'category', 'time_out'],
+        Corrections: ['participant', 'bib_number', 'action', 'reason', 'user'],
+        'User Activity': ['user', 'action', 'entity', 'entity_id'],
+        Imports: ['file_name', 'user'],
+    };
     return (req, res, next) => {
         const gate = adminOnly
             ? requireAdmin
@@ -57,18 +65,27 @@ function reportRoute(name, adminOnly, build) {
             try {
                 const query = build(req);
                 const db = getSqlite();
+                const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+                const searchable = searchColumns[name] ?? [];
+                const filteredSql = search && searchable.length
+                    ? `SELECT * FROM (${query.sql}) report_rows WHERE (${searchable.map((column) => `COALESCE(CAST(report_rows."${column}" AS TEXT), '') LIKE ?`).join(' OR ')})`
+                    : `SELECT * FROM (${query.sql}) report_rows`;
+                const params = search && searchable.length
+                    ? [...query.params, ...searchable.map(() => `%${search}%`)]
+                    : query.params;
+                const filters = { ...query.filters, ...(search ? { search } : {}) };
                 if (req.query.format === 'xlsx') {
                     db.prepare(`INSERT INTO activity_log (user_id, action, entity, new_values, created_at)
             VALUES (?, 'EXPORT_REPORT', 'report', ?, ?)`)
-                        .run(req.user.id, JSON.stringify({ report: name, filters: query.filters }), new Date().toISOString());
-                    void sendWorkbook(res, name, query.filters, req.user.full_name, query).catch((error) => sendFailure(next, error, res));
+                        .run(req.user.id, JSON.stringify({ report: name, filters }), new Date().toISOString());
+                    void sendWorkbook(res, name, filters, req.user.full_name, { ...query, sql: filteredSql, params }).catch((error) => sendFailure(next, error, res));
                     return;
                 }
                 const page = z.coerce.number().int().nonnegative().default(0).parse(req.query.page);
                 const limit = z.coerce.number().int().positive().max(200).default(100).parse(req.query.limit);
-                const total = db.prepare(`SELECT COUNT(*) AS total FROM (${query.sql}) report_rows`).get(...query.params).total;
-                const data = db.prepare(`SELECT * FROM (${query.sql}) report_rows LIMIT ? OFFSET ?`)
-                    .all(...query.params, limit, page * limit);
+                const total = db.prepare(`SELECT COUNT(*) AS total FROM (${filteredSql}) filtered_rows`).get(...params).total;
+                const data = db.prepare(`${filteredSql} LIMIT ? OFFSET ?`)
+                    .all(...params, limit, page * limit);
                 res.json({ data, total, page, limit });
             }
             catch (error) {
