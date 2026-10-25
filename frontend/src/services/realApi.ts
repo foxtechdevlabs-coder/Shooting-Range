@@ -145,9 +145,9 @@ export const realApi = {
   async bootstrap() {
     const [me, participantResponse, transactionResponse, userResponse, categories, settingsResponse] = await Promise.all([
       request<{ user: ApiUser }>('/api/auth/me'),
-      request<{ data: ApiParticipant[] }>('/api/participants', { query: { limit: 500 } }),
-      request<{ data: ApiTransaction[] }>('/api/transactions', { query: { limit: 500 } }),
-      request<{ data: ApiUser[] }>('/api/users').catch((error: ApiError) => error.status === 403 ? { data: [] } : Promise.reject(error)),
+      request<{ data: ApiParticipant[] }>('/api/participants', { query: { limit: 50 } }),
+      request<{ data: ApiTransaction[] }>('/api/transactions', { query: { limit: 50 } }),
+      request<{ data: ApiUser[] }>('/api/users', { query: { limit: 50 } }).catch((error: ApiError) => error.status === 403 ? { data: [] } : Promise.reject(error)),
       getCategories(),
       request<{ settings: Record<string, string> }>('/api/settings'),
     ])
@@ -226,6 +226,17 @@ export const realApi = {
     })
   },
   async scanSummary() { return request<{ in: number; out: number; total: number; printed: number; unprinted: number; stale: number }>('/api/scan/summary') },
+  async dashboardSummary() {
+    return request<{
+      total: number
+      in: number
+      out: number
+      todayTransactions: number
+      categories: Array<{ name: string; value: number }>
+      hourly: Array<{ hour: number; checkIn: number; checkOut: number }>
+      recent: Array<{ id: number; user_id: number | null; action: string; entity: string; details: string; created_at: string; user_name: string | null }>
+    }>('/api/dashboard/summary')
+  },
   async recentScans() {
     const result = await request<{ data: ApiTransaction[] }>('/api/scan/recent')
     return result.data.map(transactionFromApi)
@@ -258,8 +269,12 @@ export const realApi = {
     return request<{ data: Array<Record<string, unknown>>; total: number; page: number; limit: number }>('/api/corrections', { query })
   },
   async listUsers() {
-    const result = await request<{ data: ApiUser[] }>('/api/users')
+    const result = await request<{ data: ApiUser[] }>('/api/users', { query: { limit: 50 } })
     return result.data.map(userFromApi)
+  },
+  async listUsersPage(query: { page: number; limit: number }) {
+    const result = await request<{ data: ApiUser[]; total: number; active: number; page: number; limit: number }>('/api/users', { query })
+    return { ...result, data: result.data.map(userFromApi) }
   },
   async saveUser(user: Omit<User, 'id'> & { id?: string }) {
     const body = { full_name: user.name, username: user.username, role: user.role, permissions: user.permissions, active: user.active }

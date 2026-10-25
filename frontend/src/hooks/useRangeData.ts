@@ -11,6 +11,7 @@ interface RangeData {
   activity: ActivityLog[]
   settings: AppSettings
   loading: boolean
+  participantError: string
   reload: () => Promise<void>
 }
 
@@ -33,24 +34,30 @@ export function useRangeData(participantQuery?: Record<string, string | number |
   const hasLoaded = useRef(false)
   const latestRequest = useRef(0)
   const [participantTotal, setParticipantTotal] = useState(0)
-  const participantQueryKey = JSON.stringify(participantQuery ?? { limit: 500 })
+  const [participantError, setParticipantError] = useState('')
+  const participantQueryKey = JSON.stringify(participantQuery ?? { limit: 50 })
+  const participantQueryMode = participantQuery !== undefined
 
   const reload = useCallback(async () => {
     if (!currentUser) return
     const requestId = ++latestRequest.current
     if (!hasLoaded.current) setLoading(true)
     const jobs = await Promise.allSettled([
-      can('participants.view') ? api.listParticipants(JSON.parse(participantQueryKey) as Record<string, string | number | undefined>) : Promise.resolve({ data: [], total: 0, page: 0, limit: 500 }),
-      can('transactions.view') ? api.listTransactions({ limit: 500 }) : Promise.resolve({ data: [] }),
-      can('users.manage') ? api.listUsers() : Promise.resolve([]),
+      can('participants.view') ? api.listParticipants(JSON.parse(participantQueryKey) as Record<string, string | number | undefined>) : Promise.resolve({ data: [], total: 0, page: 0, limit: 50 }),
+      participantQueryMode ? Promise.resolve({ data: [], total: 0, page: 0, limit: 20 }) : can('transactions.view') ? api.listTransactions({ limit: 20 }) : Promise.resolve({ data: [], total: 0, page: 0, limit: 20 }),
+      participantQueryMode ? Promise.resolve([]) : can('users.manage') ? api.listUsers() : Promise.resolve([]),
       api.getSettings(),
-      can('users.manage') ? api.activity() : Promise.resolve({ data: [], total: 0, page: 0, limit: 0 }),
+      participantQueryMode ? Promise.resolve({ data: [], total: 0, page: 0, limit: 0 }) : can('users.manage') ? api.activity() : Promise.resolve({ data: [], total: 0, page: 0, limit: 0 }),
     ])
     if (requestId !== latestRequest.current) return
     const [participantResult, transactionResult, usersResult, settingsResult, activityResult] = jobs
     if (participantResult.status === 'fulfilled') {
       setParticipants(participantResult.value.data)
       setParticipantTotal(participantResult.value.total)
+      setParticipantError('')
+    } else {
+      const error = participantResult.reason
+      setParticipantError(error instanceof Error ? error.message : 'Could not load participants.')
     }
     if (transactionResult.status === 'fulfilled') setTransactions(transactionResult.value.data)
     if (usersResult.status === 'fulfilled') setUsers(usersResult.value)
@@ -88,7 +95,7 @@ export function useRangeData(participantQuery?: Record<string, string | number |
     }
     setLoading(false)
     hasLoaded.current = true
-  }, [currentUser, can, notify, participantQueryKey])
+  }, [currentUser, can, notify, participantQueryKey, participantQueryMode])
 
   useEffect(() => {
     void reload()
@@ -96,5 +103,5 @@ export function useRangeData(participantQuery?: Record<string, string | number |
     return () => window.removeEventListener('rangeops:refresh', reload)
   }, [reload])
 
-  return { participants, transactions, users, activity, settings, loading, reload, participantTotal }
+  return { participants, transactions, users, activity, settings, loading, reload, participantTotal, participantError }
 }

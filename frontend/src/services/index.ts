@@ -54,7 +54,7 @@ export const api = {
       (!query.department || p.department === query.department) &&
       (!query.pouch_status || p.status === query.pouch_status) &&
       (!categoryName || p.category === categoryName))
-    const page = Number(query.page ?? 0), limit = Number(query.limit ?? 500)
+    const page = Number(query.page ?? 0), limit = Math.min(200, Math.max(1, Number(query.limit ?? 50)))
     const total = rows.length
     rows = rows.slice(page * limit, (page + 1) * limit)
     return { data: rows, total, page, limit }
@@ -155,6 +155,42 @@ export const api = {
     const out = db.participants.filter((item) => item.status === 'out').length
     return { in: db.participants.length - out, out, total: db.participants.length, printed: 0, unprinted: db.participants.length, stale: 0 }
   },
+  async dashboardSummary() {
+    if (!isMockMode) return realApi.dashboardSummary()
+    const db = (await mock()).snapshot()
+    const now = new Date()
+    const todayRows = db.transactions.filter((transaction) => new Date(transaction.timestamp).toDateString() === now.toDateString())
+    const categories = new Map<string, number>()
+    for (const participant of db.participants) categories.set(participant.category, (categories.get(participant.category) ?? 0) + 1)
+    const hourly = Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      checkIn: todayRows.filter((transaction) => new Date(transaction.timestamp).getHours() === hour && transaction.type === 'check-in').length,
+      checkOut: todayRows.filter((transaction) => new Date(transaction.timestamp).getHours() === hour && transaction.type === 'check-out').length,
+    }))
+    const usersById = new Map(db.users.map((user) => [user.id, user.name]))
+    const participantsById = new Map(db.participants.map((participant) => [participant.id, participant]))
+    const out = db.participants.filter((participant) => participant.status === 'out').length
+    return {
+      total: db.participants.length,
+      in: db.participants.length - out,
+      out,
+      todayTransactions: todayRows.length,
+      categories: [...categories].map(([name, value]) => ({ name, value })),
+      hourly,
+      recent: db.transactions.slice(0, 5).map((transaction) => {
+        const participant = participantsById.get(transaction.participantId)
+        return {
+          id: Number(transaction.id.replace(/\D/g, '')) || 0,
+          user_id: Number(transaction.performedBy.replace(/\D/g, '')) || null,
+          action: transaction.type === 'check-in' ? 'Checked in' : 'Checked out',
+          entity: 'Participant',
+          details: `${participant?.name ?? 'Participant'} · ${participant?.gunNumber ?? ''}`,
+          created_at: transaction.timestamp,
+          user_name: usersById.get(transaction.performedBy) ?? null,
+        }
+      }),
+    }
+  },
   async recentScans() {
     if (!isMockMode) return realApi.recentScans()
     return (await mock()).snapshot().transactions.slice(0, 10)
@@ -162,13 +198,20 @@ export const api = {
   async listTransactions(query: Record<string, string | number | undefined> = {}) {
     if (!isMockMode) return realApi.listTransactions(query)
     const db = (await mock()).snapshot()
-    const page = Number(query.page ?? 0), limit = Number(query.limit ?? 500)
+    const page = Number(query.page ?? 0), limit = Math.min(200, Math.max(1, Number(query.limit ?? 50)))
     const rows = db.transactions.slice(page * limit, (page + 1) * limit)
     return { data: rows, total: db.transactions.length, page, limit }
   },
   async listUsers() {
     if (!isMockMode) return realApi.listUsers()
     return (await mock()).snapshot().users
+  },
+  async listUsersPage(query: { page: number; limit: number }) {
+    if (!isMockMode) return realApi.listUsersPage(query)
+    const users = (await mock()).snapshot().users
+    const limit = Math.min(200, Math.max(1, query.limit))
+    const page = Math.max(0, query.page)
+    return { data: users.slice(page * limit, (page + 1) * limit), total: users.length, active: users.filter((user) => user.active).length, page, limit }
   },
   async saveUser(user: Omit<User, 'id'> & { id?: string }) {
     if (!isMockMode) return realApi.saveUser(user)
@@ -224,14 +267,16 @@ export const api = {
   async report(name: string, query: Record<string, string | number | undefined> = {}) {
     if (!isMockMode) return realApi.report(name, query)
     const db = (await mock()).snapshot()
-    if (name === 'participants') return { data: db.participants.map((row) => ({ ...row })), total: db.participants.length }
-    if (name === 'transactions') return { data: db.transactions.map((row) => ({ ...row })), total: db.transactions.length }
-    if (name === 'pouches-out') {
-      const rows = db.participants.filter((participant) => participant.status === 'out')
-      return { data: rows.map((row) => ({ ...row })), total: rows.length }
-    }
-    if (name === 'user-activity') return { data: db.activity.map((row) => ({ ...row })), total: db.activity.length }
-    return { data: [], total: 0 }
+    let rows: Array<Record<string, unknown>> = []
+    if (name === 'participants') rows = db.participants.map((row) => ({ ...row }))
+    else if (name === 'transactions') rows = db.transactions.map((row) => ({ ...row }))
+    else if (name === 'pouches-out') rows = db.participants.filter((participant) => participant.status === 'out').map((row) => ({ ...row }))
+    else if (name === 'user-activity') rows = db.activity.map((row) => ({ ...row }))
+    const search = String(query.search ?? '').trim().toLowerCase()
+    if (search) rows = rows.filter((row) => Object.values(row).some((value) => String(value ?? '').toLowerCase().includes(search)))
+    const page = Math.max(0, Number(query.page ?? 0))
+    const limit = Math.min(200, Math.max(1, Number(query.limit ?? 25)))
+    return { data: rows.slice(page * limit, (page + 1) * limit), total: rows.length, page, limit }
   },
   async downloadReport(name: string, query: Record<string, string | number | undefined> = {}) {
     if (!isMockMode) return realApi.downloadReport(name, query)

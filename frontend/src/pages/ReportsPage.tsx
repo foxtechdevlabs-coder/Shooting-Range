@@ -53,11 +53,14 @@ export function ReportsPage() {
   const currentTab = report === 'activity' ? 'user-activity' : tabs.some((tab) => tab.id === report) ? report : 'participants'
   const [filters, setFilters] = useState<Record<string, string>>({})
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(25)
   const [rows, setRows] = useState<ReportRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [reportError, setReportError] = useState('')
   const query = useMemo(() => Object.fromEntries(Object.entries(filters).filter(([, value]) => value)) as Record<string, string>, [filters])
-  const queryKey = JSON.stringify(query)
+  const queryKey = JSON.stringify({ ...query, search, page, limit: pageSize })
   const settings = currentUser?.name ?? 'Range staff'
   const generated = useMemo(() => new Date(), [rows])
 
@@ -69,16 +72,18 @@ export function ReportsPage() {
       if (!active) return
       setRows(result.data.map((row) => ({ ...row })))
       setTotal(result.total)
+      setReportError('')
     }).catch((error) => {
-      if (active) notify(error instanceof Error ? error.message : 'Could not load report.')
+      if (active) {
+        const message = error instanceof Error ? error.message : 'Could not load report.'
+        setReportError(message)
+        notify(message)
+      }
     }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [currentTab, queryKey, isAdmin, notify])
 
-  const visibleRows = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return q ? rows.filter((row) => Object.values(row).some((value) => String(value ?? '').toLowerCase().includes(q))) : rows
-  }, [rows, search])
+  const visibleRows = rows
   const headers = columnOverrides[currentTab] ?? Object.keys(visibleRows[0] ?? {})
   const exportAllowed = (currentTab === 'participants' || currentTab === 'pouches-out' || currentTab === 'transactions')
     ? can('reports.export')
@@ -88,17 +93,18 @@ export function ReportsPage() {
     window.print()
   }
   const exportReport = async () => {
-    try { await api.downloadReport(currentTab, query); notify('Report downloaded.') }
+    try { await api.downloadReport(currentTab, { ...query, ...(search ? { search } : {}) }); notify('Report downloaded.') }
     catch (error) { notify(error instanceof Error ? error.message : 'Could not export report.') }
   }
-  const updateFilter = (key: string, value: string) => setFilters((current) => ({ ...current, [key]: value }))
+  const updateFilter = (key: string, value: string) => { setFilters((current) => ({ ...current, [key]: value })); setPage(0) }
   if (loading) return <div className="page data-skeleton" role="status" aria-label="Loading report"><div className="skeleton skeleton-heading" /><div className="skeleton skeleton-panel" /><span>Loading report…</span></div>
   return <div className="page">
     <div className="report-print-header"><div className="report-print-brand"><b>RO</b><span>Shooting Range Management</span></div><div><b>{tabs.find((tab) => tab.id === currentTab)?.label}</b><span>Generated {formatDateTime(generated.toISOString())} by {settings}</span></div></div>
     <PageHeading eyebrow="INSIGHTS & RECORDS" title="Reports" description="Event records and operational summaries, ready when you are." actions={<><Button variant="outline" onClick={print}><Printer size={16} /> Print</Button>{exportAllowed && <Button onClick={() => void exportReport()}><Download size={16} /> Export Excel</Button>}</>} />
     <section className="panel report-panel"><div className="report-tabs" role="tablist">{tabs.map((tab) => <NavLink role="tab" aria-selected={currentTab === tab.id} className={currentTab === tab.id ? 'report-tab report-tab-active' : 'report-tab'} key={tab.id} to={tab.id === 'participants' ? '/reports' : `/reports/${tab.id}`}>{tab.label}{adminTabs.some((item) => item.id === tab.id) && <span className="admin-only">ADMIN</span>}</NavLink>)}</div>
-      <div className="report-toolbar"><div className="report-summary"><b>{total}</b> records<span>· Loaded from server</span></div><div className="report-filter-tools"><input className="filter-select" type="date" aria-label="From date" value={filters.from ?? ''} onChange={(event) => updateFilter('from', event.target.value)} /><input className="filter-select" type="date" aria-label="To date" value={filters.to ?? ''} onChange={(event) => updateFilter('to', event.target.value)} />{['participants', 'pouches-out'].includes(currentTab) && <><input className="filter-select" placeholder="NOC" aria-label="Filter NOC" value={filters.noc ?? ''} onChange={(event) => updateFilter('noc', event.target.value)} /><input className="filter-select" placeholder="Department" aria-label="Filter department" value={filters.department ?? ''} onChange={(event) => updateFilter('department', event.target.value)} /><input className="filter-select" placeholder="Category ID" aria-label="Filter category ID" value={filters.category_id ?? ''} onChange={(event) => updateFilter('category_id', event.target.value)} />{currentTab === 'participants' && <select className="filter-select" aria-label="Filter participant status" value={filters.status ?? ''} onChange={(event) => updateFilter('status', event.target.value)}><option value="">All statuses</option><option value="in">Checked in</option><option value="out">Checked out</option></select>}</>}{currentTab === 'transactions' && <><input className="filter-select" placeholder="Participant ID" aria-label="Filter participant ID" value={filters.participant_id ?? ''} onChange={(event) => updateFilter('participant_id', event.target.value)} /><input className="filter-select" placeholder="Gun number" aria-label="Filter gun number" value={filters.gun_number ?? ''} onChange={(event) => updateFilter('gun_number', event.target.value)} /><select className="filter-select" aria-label="Filter movement" value={filters.type ?? ''} onChange={(event) => updateFilter('type', event.target.value)}><option value="">All movements</option><option value="in">Check-in</option><option value="out">Check-out</option></select><input className="filter-select" placeholder="User ID" aria-label="Filter user ID" value={filters.user_id ?? ''} onChange={(event) => updateFilter('user_id', event.target.value)} /></>}{['corrections', 'user-activity'].includes(currentTab) && <input className="filter-select" placeholder="User ID" aria-label="Filter user ID" value={filters.user_id ?? ''} onChange={(event) => updateFilter('user_id', event.target.value)} />}{currentTab === 'user-activity' && <input className="filter-select" placeholder="Action" aria-label="Filter action" value={filters.action ?? ''} onChange={(event) => updateFilter('action', event.target.value)} />}<div className="search-box"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search this report..." aria-label="Search report rows" /></div></div></div>
-      <div className="table-scroll"><table className="data-table"><thead><tr>{headers.map((key) => <th key={key}>{labelFor(key)}</th>)}</tr></thead><tbody>{visibleRows.map((row, index) => <tr key={String(row.id ?? `${currentTab}-${index}`)}>{headers.map((key) => <td key={key}>{displayValue(key, row[key])}</td>)}</tr>)}{visibleRows.length === 0 && <tr><td colSpan={Math.max(1, headers.length)}><div className="empty-state"><b>No matching records</b><span>Adjust your filters and try again.</span></div></td></tr>}</tbody></table></div><div className="table-footer"><span>Showing <b>{visibleRows.length}</b> of <b>{total}</b> report records</span><span className="report-generated">Generated {formatDateTime(generated.toISOString())}</span></div>
+      <div className="report-toolbar"><div className="report-summary"><b>{total}</b> records<span>· Loaded from server</span></div><div className="report-filter-tools"><input className="filter-select" type="date" aria-label="From date" value={filters.from ?? ''} onChange={(event) => updateFilter('from', event.target.value)} /><input className="filter-select" type="date" aria-label="To date" value={filters.to ?? ''} onChange={(event) => updateFilter('to', event.target.value)} />{['participants', 'pouches-out'].includes(currentTab) && <><input className="filter-select" placeholder="NOC" aria-label="Filter NOC" value={filters.noc ?? ''} onChange={(event) => updateFilter('noc', event.target.value)} /><input className="filter-select" placeholder="Department" aria-label="Filter department" value={filters.department ?? ''} onChange={(event) => updateFilter('department', event.target.value)} /><input className="filter-select" placeholder="Category ID" aria-label="Filter category ID" value={filters.category_id ?? ''} onChange={(event) => updateFilter('category_id', event.target.value)} />{currentTab === 'participants' && <select className="filter-select" aria-label="Filter participant status" value={filters.status ?? ''} onChange={(event) => updateFilter('status', event.target.value)}><option value="">All statuses</option><option value="in">Checked in</option><option value="out">Checked out</option></select>}</>}{currentTab === 'transactions' && <><input className="filter-select" placeholder="Participant ID" aria-label="Filter participant ID" value={filters.participant_id ?? ''} onChange={(event) => updateFilter('participant_id', event.target.value)} /><input className="filter-select" placeholder="Gun number" aria-label="Filter gun number" value={filters.gun_number ?? ''} onChange={(event) => updateFilter('gun_number', event.target.value)} /><select className="filter-select" aria-label="Filter movement" value={filters.type ?? ''} onChange={(event) => updateFilter('type', event.target.value)}><option value="">All movements</option><option value="in">Check-in</option><option value="out">Check-out</option></select><input className="filter-select" placeholder="User ID" aria-label="Filter user ID" value={filters.user_id ?? ''} onChange={(event) => updateFilter('user_id', event.target.value)} /></>}{['corrections', 'user-activity'].includes(currentTab) && <input className="filter-select" placeholder="User ID" aria-label="Filter user ID" value={filters.user_id ?? ''} onChange={(event) => updateFilter('user_id', event.target.value)} />}{currentTab === 'user-activity' && <input className="filter-select" placeholder="Action" aria-label="Filter action" value={filters.action ?? ''} onChange={(event) => updateFilter('action', event.target.value)} />}<div className="search-box"><Search size={15} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(0) }} placeholder="Search this report..." aria-label="Search report rows" /></div></div></div>
+      {reportError && <div className="login-error" role="alert">Could not load report: {reportError}</div>}
+      <div className="table-scroll"><table className="data-table"><thead><tr>{headers.map((key) => <th key={key}>{labelFor(key)}</th>)}</tr></thead><tbody>{visibleRows.map((row, index) => <tr key={String(row.id ?? `${currentTab}-${index}`)}>{headers.map((key) => <td key={key}>{displayValue(key, row[key])}</td>)}</tr>)}{visibleRows.length === 0 && <tr><td colSpan={Math.max(1, headers.length)}><div className="empty-state"><b>No matching records</b><span>Adjust your filters and try again.</span></div></td></tr>}</tbody></table></div><div className="table-footer"><span>Showing <b>{total ? page * pageSize + 1 : 0}–{Math.min((page + 1) * pageSize, total)}</b> of <b>{total}</b> report records</span><div className="pagination"><label>Rows <select className="filter-select" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0) }}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select></label><button className="button button-outline" disabled={page === 0} onClick={() => setPage(Math.max(0, page - 1))}>Previous</button><span>Page {page + 1} of {Math.max(1, Math.ceil(total / pageSize))}</span><button className="button button-outline" disabled={(page + 1) * pageSize >= total} onClick={() => setPage(page + 1)}>Next</button></div></div>
     </section>
   </div>
 }

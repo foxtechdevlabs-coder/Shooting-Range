@@ -14,6 +14,7 @@ export function ScanPage() {
   const [code, setCode] = useState('')
   const [result, setResult] = useState<ScanResult | null>(null)
   const [manual, setManual] = useState('')
+  const [manualMatches, setManualMatches] = useState<Participant[]>([])
   const [soundOn, setSoundOn] = useState(settings.scanSound)
   const [busy, setBusy] = useState(false)
   const [confirmDuplicate, setConfirmDuplicate] = useState(false)
@@ -23,7 +24,7 @@ export function ScanPage() {
   const [summary, setSummary] = useState<{ in: number; out: number; total: number } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => { setSoundOn(settings.scanSound) }, [settings.scanSound])
-  const gunsOut = summary?.out ?? participants.filter((p) => p.status === 'out').length
+  const gunsOut = summary?.out ?? 0
   const beep = (success: boolean) => {
     if (!soundOn) return
     try {
@@ -45,6 +46,19 @@ export function ScanPage() {
   useEffect(() => {
     void reloadScanData().catch((error) => notify(error instanceof Error ? error.message : 'Could not load scan data.'))
   }, [notify])
+  useEffect(() => {
+    const query = manual.trim()
+    if (!query) { setManualMatches([]); return }
+    let active = true
+    const timer = window.setTimeout(() => {
+      void api.listParticipants({ search: query, limit: 20 }).then((result) => {
+        if (active) setManualMatches(result.data)
+      }).catch((error) => {
+        if (active) notify(error instanceof Error ? error.message : 'Could not search participants.')
+      })
+    }, 300)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [manual, notify])
   const process = async (value: string, isManual = false, confirm = false) => {
     const normalized = value.trim()
     if (!normalized || busy) return
@@ -97,8 +111,8 @@ export function ScanPage() {
   const userName = (id: string) => users.find((u) => u.id === id)?.name ?? 'Range staff'
   return <div className="page scan-page">
     <PageHeading eyebrow="LIVE RANGE OPERATIONS" title="Scan station" description="Scan a participant’s barcode to check their firearm in or out." actions={<button className={`sound-toggle ${soundOn ? 'sound-enabled' : ''}`} onClick={() => setSoundOn(!soundOn)}>{soundOn ? <Volume2 size={16} /> : <VolumeX size={16} />}{soundOn ? 'Sound on' : 'Sound off'}</button>} />
-    <div className="scan-counters"><div><span className="counter-icon counter-amber"><ArrowUpRight size={18} /></span><div><small>Guns checked out</small><b>{gunsOut}</b></div><span className="counter-caption">ON THE RANGE</span></div><div><span className="counter-icon counter-green"><ArrowDownLeft size={18} /></span><div><small>Guns checked in</small><b>{summary?.in ?? participants.length - gunsOut}</b></div><span className="counter-caption">IN THE ARMORY</span></div><div><span className="scan-live-dot" /><div><small>Station status</small><b className="online-label">Ready to scan</b></div><span className="counter-caption">LIVE</span></div></div>
-    <div className="scan-layout"><section className="panel scanner-panel"><div className="scan-kicker"><span className="scan-pulse"><ScanLine size={17} /></span><span>BARCODE SCANNER</span><i><span /> READY</i></div><h2>Scan participant pass</h2><p className="scanner-instructions">Position the barcode inside the scanner. It will be checked in or out automatically.</p><form onSubmit={(e) => { e.preventDefault(); void process(code) }}><label className="scan-input-wrap"><ScanLine size={20} /><input ref={inputRef} value={code} onChange={(e) => setCode(e.target.value)} placeholder="Waiting for barcode..." aria-label="Scan barcode" autoComplete="off" autoFocus /><kbd>ENTER</kbd></label></form><div className="scan-divider"><span>OR ENTER MANUALLY</span></div><form className="manual-entry" onSubmit={(e) => { e.preventDefault(); void process(manual, true); setManual('') }}><div className="search-box"><Search size={16} /><input value={manual} onChange={(e) => setManual(e.target.value)} placeholder="Bib number or gun number" aria-label="Manual lookup" /></div><Button variant="secondary" type="submit">Look up</Button></form>
+    <div className="scan-counters"><div><span className="counter-icon counter-amber"><ArrowUpRight size={18} /></span><div><small>Guns checked out</small><b>{gunsOut}</b></div><span className="counter-caption">ON THE RANGE</span></div><div><span className="counter-icon counter-green"><ArrowDownLeft size={18} /></span><div><small>Guns checked in</small><b>{summary?.in ?? 0}</b></div><span className="counter-caption">IN THE ARMORY</span></div><div><span className="scan-live-dot" /><div><small>Station status</small><b className="online-label">Ready to scan</b></div><span className="counter-caption">LIVE</span></div></div>
+    <div className="scan-layout"><section className="panel scanner-panel"><div className="scan-kicker"><span className="scan-pulse"><ScanLine size={17} /></span><span>BARCODE SCANNER</span><i><span /> READY</i></div><h2>Scan participant pass</h2><p className="scanner-instructions">Position the barcode inside the scanner. It will be checked in or out automatically.</p><form onSubmit={(e) => { e.preventDefault(); void process(code) }}><label className="scan-input-wrap"><ScanLine size={20} /><input ref={inputRef} value={code} onChange={(e) => setCode(e.target.value)} placeholder="Waiting for barcode..." aria-label="Scan barcode" autoComplete="off" autoFocus /><kbd>ENTER</kbd></label></form><div className="scan-divider"><span>OR ENTER MANUALLY</span></div><form className="manual-entry" onSubmit={(e) => { e.preventDefault(); void process(manual, true); setManual('') }}><div className="search-box"><Search size={16} /><input value={manual} onChange={(e) => setManual(e.target.value)} placeholder="Bib number or gun number" aria-label="Manual lookup" /></div><Button variant="secondary" type="submit">Look up</Button></form>{manualMatches.length > 0 && <div className="participant-suggestions" role="listbox">{manualMatches.map((participant) => <button key={participant.id} type="button" role="option" onClick={() => { setManual(''); setManualMatches([]); void process(participant.gunNumber, true) }}><b>{participant.bibNumber} · {participant.name}</b><span>{participant.gunNumber} · {participant.noc}</span></button>)}</div>}
       {result?.participant && <div className={`scan-result result-${result.transaction?.type === 'check-in' ? 'in' : 'out'}`} role="status"><span className="result-status-icon"><Check size={25} /></span><div className="result-content"><div className="result-status">{result.transaction?.type === 'check-in' ? 'FIREARM CHECKED IN' : 'FIREARM CHECKED OUT'}</div><h3>{result.participant.name}</h3><p><span>BIB {result.participant.bibNumber}</span><span>{result.participant.noc}</span><span>{result.participant.category}</span></p><div className="result-foot"><span>Gun <b>{result.participant.gunNumber}</b></span><StatusPill status={result.participant.status} /><span>{new Date(result.transaction!.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span></div></div><button onClick={() => { setResult(null); inputRef.current?.focus() }} aria-label="Dismiss scan result"><X size={16} /></button></div>}
       {result?.error && <div className={`scan-error ${result.duplicate ? '' : 'scan-unknown'}`} role="alert"><span>{result.duplicate ? <Clock3 size={19} /> : <X size={19} />}</span><div><b>{result.duplicate ? 'Duplicate scan' : 'Participant not found'}</b><p>{result.error}</p></div><button onClick={() => { setResult(null); inputRef.current?.focus() }} aria-label="Dismiss message"><X size={15} /></button></div>}
       {!result && <div className="scanner-hint"><Keyboard size={16} /><span>USB barcode scanners work like a keyboard. Scan and press Enter.</span></div>}

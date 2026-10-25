@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { flexRender } from '@tanstack/react-table/flex-render'
-import { getCoreRowModel, getSortedRowModel, legacyCreateColumnHelper, useLegacyTable } from '@tanstack/react-table/legacy'
+import { getCoreRowModel, legacyCreateColumnHelper, useLegacyTable } from '@tanstack/react-table/legacy'
 import type { SortingState } from '@tanstack/table-core'
 import { ArrowDownUp, ChevronLeft, ChevronRight, Download, Plus, Printer, Search, Trash2, Upload, UserRoundPen } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -65,6 +65,7 @@ export function ParticipantsPage() {
   const { refresh, notify, can } = useAppStore()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [category, setCategory] = useState('')
   const [department, setDepartment] = useState('')
   const [status, setStatus] = useState('')
@@ -75,16 +76,20 @@ export function ParticipantsPage() {
   const [editing, setEditing] = useState<Participant | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null)
-  const pageSize = 10
+  const [pageSize, setPageSize] = useState(25)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
   const sortingMap: Record<string, string> = { bibNumber: 'bib_number', name: 'name', noc: 'noc', gunNumber: 'gun_number', status: 'pouch_status' }
   const selectedSort = sorting[0]
-  const { participants, participantTotal, loading } = useRangeData({
-    search, category: category || undefined, department: department || undefined,
+  const { participants, participantTotal, participantError, loading } = useRangeData({
+    search: debouncedSearch, category: category || undefined, department: department || undefined,
     pouch_status: status || undefined, label_status: labelFilter || undefined,
     page, limit: pageSize, sort: sortingMap[selectedSort?.id ?? 'bibNumber'] ?? 'bib_number',
     order: selectedSort?.desc ? 'desc' : 'asc',
   })
-  const table = useLegacyTable({ data: participants, columns, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel() })
+  const table = useLegacyTable({ data: participants, columns, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel() })
   const visibleRows = table.getRowModel().rows
   const pageRows = visibleRows.map((row) => row.original)
   const openForm = (participant?: Participant) => { setEditing(participant ?? null); setShowForm(true) }
@@ -105,6 +110,7 @@ export function ParticipantsPage() {
       <Can permission="participants.create"><Button onClick={() => openForm()}><Plus size={17} /> Add participant</Button></Can>
     </>} />
     <section className="panel table-panel">
+      {participantError && <div className="login-error" role="alert">Could not load participants: {participantError}</div>}
       <div className="table-toolbar"><div className="toolbar-left"><div className="search-box"><Search size={16} /><input value={search} onChange={(e) => { setSearch(e.target.value); setPage(0) }} placeholder="Search name, bib, gun no..." aria-label="Search participants" /></div><select className="filter-select" aria-label="Filter category" value={category} onChange={(e) => { setCategory(e.target.value); setPage(0) }}><option value="">All categories</option>{CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select><select className="filter-select" aria-label="Filter department" value={department} onChange={(e) => { setDepartment(e.target.value); setPage(0) }}><option value="">All departments</option>{DEPARTMENTS.map((item) => <option key={item}>{item}</option>)}</select><select className="filter-select" aria-label="Filter status" value={status} onChange={(e) => { setStatus(e.target.value); setPage(0) }}><option value="">All statuses</option><option value="in">Checked in</option><option value="out">Checked out</option></select><select className="filter-select" aria-label="Filter label status" value={labelFilter} onChange={(e) => { setLabelFilter(e.target.value); setPage(0) }}><option value="">All label statuses</option><option value="unprinted">Not printed</option><option value="printed">Printed</option><option value="stale">Needs reprint</option></select></div>
         <div className="toolbar-right">{selected.length > 0 && <><span className="selected-count">{selected.length} selected</span>{can('barcodes.print') && <Button variant="outline" onClick={() => navigate(`/barcodes?selected=${selected.join(',')}`)}><Printer size={15} /> Print</Button>}{can('participants.delete') && <Button variant="danger" onClick={() => setConfirmDelete(selected)}><Trash2 size={15} /> Delete</Button>}</>}{can('reports.export') && <Button variant="outline" onClick={() => { const blob = new Blob([JSON.stringify(participants, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'participants.json'; a.click(); URL.revokeObjectURL(a.href) }}><Download size={15} /> Export</Button>}</div>
       </div>
@@ -112,7 +118,7 @@ export function ParticipantsPage() {
         <tbody>{visibleRows.map((row) => <tr key={row.original.id}><td className="checkbox-col"><input type="checkbox" aria-label={`Select ${row.original.name}`} checked={selected.includes(row.original.id)} onChange={(e) => setSelected(e.target.checked ? [...selected, row.original.id] : selected.filter((id) => id !== row.original.id))} /></td>{row.getVisibleCells().map((cell) => <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}<td><div className="row-actions">{can('participants.edit') && <button title="Edit participant" aria-label="Edit participant" onClick={() => openForm(row.original)}><UserRoundPen size={15} /></button>}        {can('barcodes.print') && <button title="Print barcode" aria-label="Print barcode" onClick={() => navigate(`/barcodes?selected=${row.original.id}`)}><Printer size={15} /></button>}{can('participants.delete') && <button title="Delete participant" aria-label="Delete participant" onClick={() => setConfirmDelete([row.original.id])}><Trash2 size={15} /></button>}</div></td></tr>)}
           {pageRows.length === 0 && <tr><td colSpan={10}><div className="empty-state"><span className="empty-icon"><UsersEmpty /></span><b>No participants found</b><span>Try adjusting your search or filters.</span></div></td></tr>}</tbody>
       </table></div>
-      <footer className="table-footer"><span>Showing <b>{participantTotal ? page * pageSize + 1 : 0}–{Math.min((page + 1) * pageSize, participantTotal)}</b> of <b>{participantTotal}</b> participants</span><div className="pagination"><button className="button button-outline" disabled={page === 0} onClick={() => setPage(Math.max(0, page - 1))}><ChevronLeft size={15} /> Previous</button><span>Page {page + 1} of {Math.max(1, Math.ceil(participantTotal / pageSize))}</span><button className="button button-outline" disabled={(page + 1) * pageSize >= participantTotal} onClick={() => setPage(page + 1)}>Next <ChevronRight size={15} /></button></div></footer>
+      <footer className="table-footer"><span>Showing <b>{participantTotal ? page * pageSize + 1 : 0}–{Math.min((page + 1) * pageSize, participantTotal)}</b> of <b>{participantTotal}</b> participants</span><div className="pagination"><label>Rows <select className="filter-select" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0) }}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select></label><button className="button button-outline" disabled={page === 0} onClick={() => setPage(Math.max(0, page - 1))}><ChevronLeft size={15} /> Previous</button><span>Page {page + 1} of {Math.max(1, Math.ceil(participantTotal / pageSize))}</span><button className="button button-outline" disabled={(page + 1) * pageSize >= participantTotal} onClick={() => setPage(page + 1)}>Next <ChevronRight size={15} /></button></div></footer>
     </section>
     {showForm && <ParticipantForm participant={editing} onClose={() => setShowForm(false)} />}
     {confirmDelete && <Modal title="Delete participant?" onClose={() => setConfirmDelete(null)} footer={<><Button variant="secondary" onClick={() => setConfirmDelete(null)}>Cancel</Button><Button variant="danger" onClick={remove}><Trash2 size={15} /> Delete {confirmDelete.length > 1 ? `${confirmDelete.length} participants` : 'participant'}</Button></>}><p className="confirm-copy">This will permanently remove {confirmDelete.length > 1 ? 'these participants' : 'this participant'} from the local register. Transaction history will remain.</p></Modal>}
@@ -126,17 +132,12 @@ function isApiError(error: unknown): error is ApiError {
 }
 
 function ParticipantForm({ participant, onClose }: { participant: Participant | null; onClose: () => void }) {
-  const { participants } = useRangeData()
   const { refresh, notify } = useAppStore()
   const { register, handleSubmit, setError, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: participant ?? { bibNumber: '', noc: 'IND', name: '', department: DEPARTMENTS[0], gunNumber: '', contactNumber: '', category: CATEGORIES[0] },
   })
   const submit = async (values: FormValues) => {
-    const duplicateBib = participants.find((p) => p.bibNumber.toLowerCase() === values.bibNumber.toLowerCase() && p.id !== participant?.id)
-    const duplicateGun = participants.find((p) => p.gunNumber.toLowerCase() === values.gunNumber.toLowerCase() && p.id !== participant?.id)
-    if (duplicateBib) { setError('bibNumber', { message: 'This bib number is already assigned.' }); return }
-    if (duplicateGun) { setError('gunNumber', { message: 'This gun number is already assigned.' }); return }
     let isGunChanged = false
     try {
       if (participant) {
