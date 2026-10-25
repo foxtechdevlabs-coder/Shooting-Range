@@ -1,36 +1,49 @@
-import { createApp } from './app.js'
-import { config } from './config.js'
-import { runMigrations } from './db/migrate.js'
-import { runShutdownBackup, startAutoBackup } from './services/autoBackup.js'
+/**
+ * Development CLI entry point.
+ *
+ * All startup logic lives in server.ts (`startServer`), which the Electron main
+ * process also uses. This file only wires process signals and logging.
+ */
+import { startServer } from './server.js'
+import { logger } from './services/logger.js'
 
-// Run migrations on startup
-console.log('[DB] Running migrations...')
-runMigrations()
-console.log('[DB] Migrations complete.')
+async function main() {
+  console.log('[DB] Running migrations...')
+  const server = await startServer({
+    host: process.env.HOST,
+    port: process.env.PORT ? Number(process.env.PORT) : undefined,
+  })
+  console.log('[DB] Migrations complete.')
 
-const app = createApp()
-
-const server = app.listen(config.port, config.host, () => {
-  console.log(`[SERVER] Listening on http://${config.host}:${config.port}`)
-  console.log(`[SERVER] Database: ${config.dbPath}`)
-})
-
-startAutoBackup()
-
-// Graceful shutdown
-let shuttingDown = false
-async function shutdown(signal: string) {
-  if (shuttingDown) return
-  shuttingDown = true
-  console.log(`[SERVER] ${signal} received, shutting down...`)
-  server.close()
-  server.closeAllConnections()
-  try {
-    await runShutdownBackup()
-  } finally {
-    process.exit(0)
+  let shuttingDown = false
+  async function shutdown(signal: string) {
+    if (shuttingDown) return
+    shuttingDown = true
+    console.log(`[SERVER] ${signal} received, shutting down...`)
+    logger.info('Shutdown requested', { signal })
+    try {
+      await server.runShutdownBackup(10_000)
+      await server.stop()
+    } finally {
+      process.exit(0)
+    }
   }
+
+  process.on('SIGTERM', () => { void shutdown('SIGTERM') })
+  process.on('SIGINT', () => { void shutdown('SIGINT') })
+
+  process.on('uncaughtException', (error) => {
+    logger.error('uncaughtException', { name: error.name, message: error.message, stack: error.stack })
+    console.error('[FATAL]', error)
+  })
+  process.on('unhandledRejection', (reason) => {
+    logger.error('unhandledRejection', { reason: reason instanceof Error ? reason.message : String(reason) })
+    console.error('[FATAL] Unhandled rejection:', reason)
+  })
 }
-process.on('SIGTERM', () => { void shutdown('SIGTERM') })
-process.on('SIGINT', () => { void shutdown('SIGINT') })
-process.on('beforeExit', () => { void runShutdownBackup() })
+
+main().catch((error) => {
+  logger.error('Server failed to start', { error })
+  console.error('[FATAL] Server failed to start:', error)
+  process.exit(1)
+})

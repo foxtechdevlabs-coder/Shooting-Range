@@ -226,6 +226,24 @@ export const realApi = {
     })
   },
   async scanSummary() { return request<{ in: number; out: number; total: number; printed: number; unprinted: number; stale: number }>('/api/scan/summary') },
+  async setupStatus() {
+    return request<{ needsSetup: boolean; version: string; dataDir: string }>('/api/setup/status')
+  },
+  async createFirstAdmin(input: { full_name: string; username: string; password: string; confirm_password: string }) {
+    return request<{ user: ApiUser }>('/api/setup/first-admin', { method: 'POST', body: JSON.stringify(input) })
+  },
+  async appInfo() {
+    return request<{
+      version: string
+      dataDir: string
+      logFile: string
+      packaged: boolean
+      platform: string
+      arch: string
+      printDriver: 'windows' | 'file'
+      printerName: string
+    }>('/api/app-info')
+  },
   async dashboardSummary() {
     return request<{
       total: number

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import JsBarcode from 'jsbarcode'
-import { Check, Printer, Search, SlidersHorizontal, UserRound } from 'lucide-react'
-import { useSearchParams } from 'react-router-dom'
+import { AlertTriangle, Check, Printer, Search, SlidersHorizontal, UserRound } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Button, PageHeading } from '@/components/ui'
 import { useAppStore } from '@/store/useAppStore'
 import { useRangeData } from '@/hooks/useRangeData'
@@ -30,6 +30,7 @@ export function BarcodesPage() {
   const [size, setSize] = useState(settings.labelSize)
   const [labelsPerRow, setLabelsPerRow] = useState(3)
   const [labelSummary, setLabelSummary] = useState<{ total: number; printed: number; unprinted: number; stale: number } | null>(null)
+  const [printerError, setPrinterError] = useState<string>('')
   const filtered = participants
   const [selectedDetails, setSelectedDetails] = useState<Participant[]>([])
   const chosen: Participant[] = selected.map((id) => participants.find((item) => item.id === id) ?? selectedDetails.find((item) => item.id === id)).filter((item): item is Participant => !!item)
@@ -74,17 +75,28 @@ export function BarcodesPage() {
         : selectionMode === 'unprinted'
           ? { type: 'unprinted' as const }
           : { type: 'ids' as const, ids: chosen.map((item) => Number(item.id)) }
+      setPrinterError('')
       const result = await printingApi.printLabels({ selection })
       await refresh()
       notify(`${result.count} label${result.count === 1 ? '' : 's'} sent to the printer`)
       setSelectionMode(null)
       setSelected([])
       setLabelSummary(await printingApi.getSummary())
-    } catch (error) { notify(error instanceof Error ? error.message : 'Could not print labels.') }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not print labels.'
+      const code = (error as { code?: string }).code ?? ''
+      // Printer problems get an inline pointer to Settings instead of a toast that disappears.
+      if (['PRINTER_NOT_FOUND', 'PRINTER_OFFLINE', 'SPOOL_FAILED', 'PRINTER_NOT_CONFIGURED'].includes(code)) {
+        setPrinterError(message)
+      } else {
+        notify(message)
+      }
+    }
   }
   if (loading) return <div className="page data-skeleton" role="status" aria-label="Loading barcode data"><div className="skeleton skeleton-heading" /><div className="skeleton skeleton-panel" /><span>Loading barcode data…</span></div>
   return <div className="page">
     <PageHeading eyebrow="PRINT & IDENTIFY" title="Barcode labels" description={labelSummary ? `${labelSummary.unprinted} unprinted · ${labelSummary.stale} need reprint` : 'Create scannable Code128 pouch labels for your participants.'} actions={<Button onClick={() => void print()} disabled={!selectionCount || (selectionMode === 'filter' && !!category && categoryId === undefined)}><Printer size={16} /> Print labels {selectionCount > 0 && `(${selectionCount})`}</Button>} />
+    {printerError && <div className="printer-warning" role="alert"><AlertTriangle size={16} /><div><b>Label printer unavailable.</b> {printerError} <Link to="/settings">Open printer settings</Link></div><button type="button" onClick={() => setPrinterError('')} aria-label="Dismiss printer warning">✕</button></div>}
     <div className="barcode-layout">
       <section className="panel selector-panel"><div className="panel-heading"><div><h2>Select participants</h2><p>{participantTotal} participants available</p></div><SlidersHorizontal size={17} /></div>{participantError && <div className="login-error" role="alert">Could not load participants: {participantError}</div>}<div className="selector-tools"><div className="search-box"><Search size={15} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search participants..." aria-label="Search participants" /></div><select className="filter-select" value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Filter by category"><option value="">All categories</option>{CATEGORIES.map((item) => <option key={item}>{item}</option>)}</select><button className="select-all" onClick={() => { setSelectionMode(allSelected ? null : 'filter'); setSelected([]) }}>{allSelected ? 'Clear selection' : 'Select filtered'}</button><button className="select-all" onClick={() => { setSelectionMode(selectionMode === 'unprinted' ? null : 'unprinted'); setSelected([]) }}>Not yet printed</button></div><div className="participant-selector">{filtered.map((p) => <label key={p.id} className={`selector-item ${selected.includes(p.id) ? 'selector-selected' : ''}`}><input type="checkbox" checked={selected.includes(p.id)} onChange={(e) => { setSelectionMode(null); setSelected(e.target.checked ? [...selected, p.id] : selected.filter((id) => id !== p.id)) }} /><span className="table-avatar">{p.name.split(' ').map((part) => part[0]).slice(0, 2).join('')}</span><span className="selector-name"><b>{p.name}</b><small>Bib {p.bibNumber} · {p.category}</small></span>{selected.includes(p.id) && <Check size={16} />}</label>)}</div></section>
       <div className="barcode-settings"><section className="panel setting-card"><div className="panel-heading"><div><h2>Label settings</h2><p>Customize your print layout</p></div></div><label className="form-field"><span>Label size</span><select value={size} onChange={(e) => setSize(e.target.value as 'small' | 'medium' | 'large')}><option value="small">Small · 50 × 30 mm</option><option value="medium">Medium · 70 × 40 mm</option><option value="large">Large · 90 × 50 mm</option></select></label><label className="form-field label-row-select"><span>Labels per row</span><select value={labelsPerRow} onChange={(e) => setLabelsPerRow(Number(e.target.value))}><option value={2}>2 labels</option><option value={3}>3 labels</option><option value={4}>4 labels</option></select></label><div className="field-label">Show fields</div>{[['noc', 'NOC'], ['gunNumber', 'Gun number'], ['category', 'Category']].map(([field, label]) => <label className="field-checkbox" key={field}><input type="checkbox" checked={fields.includes(field)} onChange={() => toggleField(field)} />{label}</label>)}</section><section className="label-preview-wrap"><div className="preview-label"><div className="preview-label-top"><div className="label-brand"><span>{settings.logoText}</span><small>RANGE PASS</small></div><span className="label-bib">BIB {chosen[0]?.bibNumber ?? '—'}</span></div><strong>{chosen[0]?.name ?? 'Participant name'}</strong><div className="label-info">{fields.includes('noc') && <span>{chosen[0]?.noc ?? 'NOC'}</span>}{fields.includes('gunNumber') && <span>Gun {chosen[0]?.gunNumber ?? '—'}</span>}{fields.includes('category') && <span>{chosen[0]?.category ?? 'Category'}</span>}</div><Barcode value={chosen[0]?.barcodeValue ?? 'SR00000'} /></div><div className="preview-caption"><UserRound size={14} /> Live preview {chosen.length > 1 && <span>· {chosen.length} labels selected</span>}</div></section></div>

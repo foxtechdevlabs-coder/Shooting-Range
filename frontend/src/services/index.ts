@@ -282,6 +282,18 @@ export const api = {
     if (!isMockMode) return realApi.downloadReport(name, query)
     throw new Error('Report downloads require the server-backed API.')
   },
+  async setupStatus() {
+    if (!isMockMode) return realApi.setupStatus()
+    return { needsSetup: false, version: '1.0.0', dataDir: '' }
+  },
+  async createFirstAdmin(input: { full_name: string; username: string; password: string; confirm_password: string }) {
+    if (!isMockMode) return realApi.createFirstAdmin(input)
+    throw new Error('First-run setup requires the server-backed API.')
+  },
+  async appInfo() {
+    if (!isMockMode) return realApi.appInfo()
+    return { version: '1.0.0', dataDir: '', logFile: '', packaged: false, platform: 'web', arch: '', printDriver: 'file' as const, printerName: '' }
+  },
   async backupStatus() {
     if (!isMockMode) return realApi.backupStatus()
     return { lastManualBackupAt: null, hoursSinceManualBackup: null, lastAutomaticBackupAt: null, backupFolder: '', allowDemoReset: true }

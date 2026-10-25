@@ -16,6 +16,7 @@ const ReportsPage = lazy(() => import('@/pages/ReportsPage').then((module) => ({
 const UsersPage = lazy(() => import('@/pages/UsersPage').then((module) => ({ default: module.UsersPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((module) => ({ default: module.SettingsPage })))
 const ChangePasswordPage = lazy(() => import('@/pages/ChangePasswordPage').then((module) => ({ default: module.ChangePasswordPage })))
+const SetupPage = lazy(() => import('@/pages/SetupPage').then((module) => ({ default: module.SetupPage })))
 
 function RequireAuth() {
   const { currentUser, authLoading } = useAppStore()
@@ -95,6 +96,18 @@ function Shell() {
 
 function AppRoutes() {
   const { login, currentUser } = useAppStore()
+  // First run: no users in the database yet → show the administrator setup screen.
+  const [setup, setSetup] = useState<{ checking: boolean; needed: boolean; version?: string }>({ checking: true, needed: false })
+  useEffect(() => {
+    let active = true
+    void api.setupStatus().then((status) => {
+      if (active) setSetup({ checking: false, needed: status.needsSetup, version: status.version })
+    }).catch(() => {
+      // Older/blocked API: fall through to the normal login screen.
+      if (active) setSetup({ checking: false, needed: false })
+    })
+    return () => { active = false }
+  }, [])
   useEffect(() => {
     let active = true
     void api.me().then((user) => {
@@ -107,6 +120,8 @@ function AppRoutes() {
     })
     return () => { active = false }
   }, [login])
+  if (setup.checking) return <div className="loading-screen" role="status" aria-label="Checking installation"><div /><span>Preparing workspace…</span></div>
+  if (setup.needed) return <BrowserRouter><Suspense fallback={<div className="loading-screen" role="status"><div /><span>Loading…</span></div>}><SetupPage version={setup.version} /></Suspense></BrowserRouter>
   return <BrowserRouter><Suspense fallback={<div className="loading-screen" role="status" aria-label="Loading page"><div /><span>Loading workspace…</span></div>}><Routes>
     <Route path="/login" element={<LoginPage />} />
     <Route element={<RequireAuth />}>

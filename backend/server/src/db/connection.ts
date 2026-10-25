@@ -37,9 +37,32 @@ export function getSqlite(): BetterSQLite3.Database {
   return _sqlite
 }
 
-/** For tests: close the connection so the file can be deleted */
+/** Flush the WAL into the main database file so a copied .db is complete. */
+export function checkpointDb(): void {
+  if (!_sqlite) return
+  try {
+    _sqlite.pragma('wal_checkpoint(TRUNCATE)')
+  } catch (error) {
+    console.warn('[DB] WAL checkpoint failed:', error)
+  }
+}
+
+/**
+ * Close the connection cleanly: checkpoint the WAL first so the single
+ * .db file on disk is self-contained (important for pen-drive copies/backups),
+ * then close. Safe to call twice.
+ */
 export function closeDb() {
-  _sqlite?.close()
+  if (_sqlite) checkpointDb()
+  try {
+    _sqlite?.close()
+  } catch (error) {
+    console.warn('[DB] Error while closing the database:', error)
+  }
   _sqlite = null
   _db = null
+}
+
+export function isDbOpen(): boolean {
+  return _sqlite !== null
 }

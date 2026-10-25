@@ -1,0 +1,71 @@
+appId: com.shootingrangesystem.desktop
+productName: Shooting Range System
+copyright: Copyright © 2026 Shooting Range System
+
+directories:
+  output: release
+  buildResources: build
+
+# Only what the installed app needs at runtime.
+files:
+  - package.json
+  - desktop/dist/**/*
+  - backend/server/dist/**/*
+  - frontend/dist/**/*
+  # never ship sources, tests, maps or tooling
+  - "!**/*.ts"
+  - "!**/*.map"
+  - "!**/tests/**"
+  - "!**/*.test.js"
+  - "!backend/server/dist/server/src/tests/**"
+  - "!scripts/**"
+  - "!release/**"
+  - "!.env*"
+  - "!**/*.db"
+  - "!**/*.db-wal"
+  - "!**/*.db-shm"
+
+asar: true
+# Native addons cannot be loaded from inside an asar archive.
+asarUnpack:
+  - "**/*.node"
+  - "**/@node-rs/**"
+
+# The PowerShell raw-ZPL helper must exist as a real file (never inside app.asar).
+extraResources:
+  - from: backend/server/src/services/print-spool.ps1
+    to: print-spool.ps1
+
+# Rebuild better-sqlite3 & friends against Electron's ABI.
+npmRebuild: true
+buildDependenciesFromSource: false
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+  artifactName: ShootingRangeSystem-Setup-${version}.exe
+  legalTrademarks: ""
+  requestedExecutionLevel: asInvoker
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Shooting Range System
+  menuCategory: false
+  deleteAppDataOnUninstall: false
+  runAfterFinish: true
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  uninstallDisplayName: Shooting Range System ${version}
+  artifactName: ShootingRangeSystem-Setup-${version}.exe
+
+# No auto-update channel: the app is delivered on a pen drive and never phones home.
+publish: null

@@ -1,0 +1,46 @@
+{
+  "name": "shooting-range-system",
+  "productName": "Shooting Range System",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline desktop application for shooting range management (participants, barcode labels, scanning, reports).",
+  "author": {
+    "name": "Shooting Range System"
+  },
+  "license": "UNLICENSED",
+  "main": "desktop/dist/main.cjs",
+  "scripts": {
+    "backend:dev": "npm --prefix backend/server run dev",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "desktop:dev": "node scripts/desktop-dev.mjs",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:backend": "node scripts/build-backend.mjs",
+    "build:desktop": "node scripts/build-desktop.mjs",
+    "build:all": "npm run build:frontend && npm run build:backend && npm run build:desktop",
+    "rebuild": "electron-builder install-app-deps",
+    "dist": "npm run build:all && electron-builder --win nsis",
+    "postdist": "node scripts/postdist.mjs",
+    "verify:package": "node scripts/verify-package.mjs",
+    "test:backend": "node scripts/run-backend-tests.mjs",
+    "test": "npm run test:backend"
+  },
+  "dependencies": {
+    "@node-rs/argon2": "^2.2.2",
+    "better-sqlite3": "^13.0.3",
+    "cookie-parser": "^1.4.7",
+    "drizzle-orm": "^0.45.4",
+    "exceljs": "^4.4.0",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.1",
+    "helmet": "^8.3.0",
+    "multer": "^2.5.0",
+    "uuid": "^14.0.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.8.3"
+  }
+}
