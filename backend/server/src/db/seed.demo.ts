@@ -98,7 +98,14 @@ for (const name of categoryNames) {
   console.log('✓ Demo seed complete.')
 }
 
-if (process.argv[1]?.replace(/\\/g, '/').endsWith('/seed.demo.ts') || process.argv[1]?.replace(/\\/g, '/').endsWith('/seed.demo.js')) {
-  await seedDemo()
-  process.exit(0)
+// Keep this module free of top-level await so it can also be bundled into the
+// desktop build (esbuild CJS output does not support TLA).
+const invokedDirectly = process.argv[1]?.replace(/\\/g, '/').endsWith('/seed.demo.ts')
+  || process.argv[1]?.replace(/\\/g, '/').endsWith('/seed.demo.js')
+
+if (invokedDirectly) {
+  void seedDemo().then(() => process.exit(0)).catch((error) => {
+    console.error('[seed:demo] failed:', error)
+    process.exit(1)
+  })
 }

@@ -26,4 +26,4 @@ for (const expected of ['main.cjs', 'preload.cjs']) {
     process.exit(1)
   }
 }
-console.log('[build:desktop] ok →', fs.readdirSync(distDir).join(', '))
+console.log('[build:desktop] ok ->', fs.readdirSync(distDir).join(', '))

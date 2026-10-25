@@ -12,7 +12,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainInvokeEvent } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 
 const isDev = !app.isPackaged
 const DEV_URL = process.env.ELECTRON_START_URL ?? 'http://localhost:5173'
@@ -81,9 +80,23 @@ function resolveDataDir(): string {
 
 // ─── Backend ───────────────────────────────────────────────────────────────
 
+/**
+ * The backend is shipped as a single CommonJS bundle (see
+ * scripts/build-backend.mjs). A CommonJS require() is used on purpose:
+ *  - the Electron main process is CommonJS, so require() is native here
+ *  - require() inside app.asar works, while Node's ESM loader cannot read
+ *    files from an asar archive (dynamic import() of the ESM build failed
+ *    with "Cannot find module 'file:///.../app.asar/...'").
+ */
 function backendEntryPath(): string {
-  // <app>/desktop/dist/main.cjs → <app>/backend/server/dist/server/src/server.js
-  return path.join(__dirname, '..', '..', 'backend', 'server', 'dist', 'server', 'src', 'server.js')
+  // <app>/desktop/dist/main.cjs → <app>/backend/server/dist/server/src/server.bundle.cjs
+  return path.join(__dirname, '..', '..', 'backend', 'server', 'dist', 'server', 'src', 'server.bundle.cjs')
+}
+
+/** Prefer the unpacked copy when electron-builder placed one there. */
+function preferUnpacked(file: string): string {
+  const unpacked = file.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`)
+  return unpacked !== file && fs.existsSync(unpacked) ? unpacked : file
 }
 
 function staticDirPath(): string {
@@ -97,7 +110,7 @@ function spoolScriptPath(): string {
 }
 
 async function startBackend(): Promise<RunningBackend> {
-  const entry = backendEntryPath()
+  const entry = preferUnpacked(backendEntryPath())
   if (!fs.existsSync(entry)) {
     throw new Error(`Backend bundle is missing: ${entry}\n\nRun "npm run build:all" before starting the desktop app.`)
   }
@@ -107,10 +120,23 @@ async function startBackend(): Promise<RunningBackend> {
   }
 
   logLine('info', 'Starting embedded backend', { entry, dataDir, staticDir, version: app.getVersion() })
-  const module = await import(pathToFileURL(entry).href)
-  const started = await module.startServer({
+
+  // A plain CommonJS require keeps working inside app.asar (unlike import()).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const backendModule = require(entry) as {
+    startServer?: (options: Record<string, unknown>) => Promise<RunningBackend>
+  }
+  if (typeof backendModule.startServer !== 'function') {
+    throw new Error(`Backend bundle did not export startServer: ${entry}`)
+  }
+
+  // PORT is only set by scripts/smoke-package.mjs (a free port) and by
+  // developers running two instances side by side; normally 3001 is used.
+  const preferredPort = Number(process.env.PORT) || 3001
+
+  const started = await backendModule.startServer({
     host: '127.0.0.1',
-    port: 3001,
+    port: preferredPort,
     dataDir,
     staticDir,
     printScriptPath: spoolScriptPath(),

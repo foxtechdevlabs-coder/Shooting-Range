@@ -61,7 +61,7 @@ if ($Installer -and (Test-Path $Installer)) {
   if (Test-Path $sumsFile) {
     $expected = ((Get-Content $sumsFile -TotalCount 1) -split '\s+')[0]
     $actual = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.ToLower()
-    Check 'SHA-256 matches SHA256SUMS.txt' ($expected.ToLower() -eq $actual) $actual.Substring(0, 16) + '…'
+    Check 'SHA-256 matches SHA256SUMS.txt' ($expected.ToLower() -eq $actual) $actual.Substring(0, 16) + '...'
   } else {
     Check 'SHA256SUMS.txt found next to the installer' $false $sumsFile
   }
@@ -108,6 +108,7 @@ if (Test-Path $AppExe) {
   $sourceRoot = (Resolve-Path "$PSScriptRoot\.." -ErrorAction SilentlyContinue)
   if (Test-Path $asar) {
     $asarText = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes($asar))
+    Check 'backend CommonJS bundle (server.bundle.cjs) is inside app.asar' ($asarText -match 'server\.bundle\.cjs') ''
     Check 'app.asar contains no absolute path to the build machine' (-not ($asarText -match 'Shootingrange/backend|C:\\\\Users\\\\[^\\\\]+\\\\Shootingrange')) ''
     Check 'app.asar contains no .env file reference' (-not ($asarText -match '\.env\.local')) ''
     Check 'app.asar contains no database file' (-not ($asarText -match 'loadtest\.db|shootingrange\.db-shm')) ''
@@ -184,10 +185,10 @@ if (-not $SkipLaunchTests -and (Test-Path $AppExe)) {
 # ------------------------------------------------------------------- summary
 Write-Host ''
 if ($script:failures -eq 0) {
-  Write-Host ("ALL CHECKS PASSED — {0}/{0}" -f $script:checks) -ForegroundColor Green
+  Write-Host ("ALL CHECKS PASSED - {0}/{0}" -f $script:checks) -ForegroundColor Green
   Write-Host 'Remaining manual steps (checklist): timed install, first-run admin, add participant, scan, print label, upgrade test, uninstall keeps data, devtools/navigation checks.' -ForegroundColor Yellow
   exit 0
 } else {
-  Write-Host ("FAILURES — {0}/{1} passed" -f ($script:checks - $script:failures), $script:checks) -ForegroundColor Red
+  Write-Host ("FAILURES - {0}/{1} passed" -f ($script:checks - $script:failures), $script:checks) -ForegroundColor Red
   exit 1
 }

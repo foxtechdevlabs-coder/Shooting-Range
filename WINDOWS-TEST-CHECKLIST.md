@@ -40,6 +40,27 @@ steps below as well — they cover what a script cannot judge.
 
 Build time: ______  Installer size: ______ MB
 
+### 1.4 Smoke test the packaged app automatically (build machine only)
+
+Before copying anything to the pen drive, prove the unpacked app really starts:
+
+```powershell
+npm run smoke:package
+```
+
+It runs `release\win-unpacked\Shooting Range System.exe` with a **temporary** data folder and a
+free port (your real data is never touched), waits for `/api/health`, checks first-run state,
+closes the app gracefully and confirms a shutdown backup. It prints `PASS - all smoke checks
+passed` on success; on failure it prints the full `app.log` and exits 1.
+
+| # | Step | Expected | Result |
+|---|------|----------|--------|
+| 1.4 | `npm run smoke:package` | `[smoke] PASS - all smoke checks passed` | |
+| 1.5 | If it fails, copy the printed `app.log` lines back | log names the failing module/file | |
+
+> `npm run dist` needs internet **on this build PC** (npm packages + Electron binaries). The
+> installed app itself never needs a network.
+
 ## 2. Clean install, no Node.js, network disabled
 
 | # | Step | Expected | Result |

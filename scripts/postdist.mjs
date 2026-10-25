@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `npm run postdist` — runs after `electron-builder --win nsis`.
+ * `npm run postdist` - runs after `electron-builder --win nsis`.
  *
  *   1. writes release/SHA256SUMS.txt for the installer
  *   2. builds the pen-drive folder: release/PenDrive/
@@ -37,7 +37,7 @@ const installer = installers
   .sort((a, b) => b.mtime - a.mtime)[0].file
 const installerPath = path.join(releaseDir, installer)
 
-// ─── 1. SHA-256 ────────────────────────────────────────────────────────────
+// --- 1. SHA-256 ------------------------------------------------------------
 function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
 }
@@ -46,7 +46,7 @@ const checksumLine = `${installerHash}  ${installer}\n`
 fs.writeFileSync(path.join(releaseDir, 'SHA256SUMS.txt'), checksumLine, 'utf8')
 console.log(`[postdist] SHA-256 ${installerHash}`)
 
-// ─── 2. Pen-drive folder ───────────────────────────────────────────────────
+// --- 2. Pen-drive folder ---------------------------------------------------
 fs.rmSync(penDriveDir, { recursive: true, force: true })
 fs.mkdirSync(path.join(penDriveDir, 'drivers'), { recursive: true })
 
@@ -65,13 +65,13 @@ function copyAsset(relative, destination) {
 copyAsset('INSTALL.txt', path.join(penDriveDir, 'INSTALL.txt'))
 copyAsset(path.join('drivers', 'README.txt'), path.join(penDriveDir, 'drivers', 'README.txt'))
 
-// Verification helper for the person doing the install (steps 1–9 of the checklist).
+// Verification helper for the person doing the install (steps 1-9 of the checklist).
 const verifyScript = path.join(root, 'verify-package.ps1')
 if (fs.existsSync(verifyScript)) fs.copyFileSync(verifyScript, path.join(penDriveDir, 'verify-package.ps1'))
 const checklist = path.join(root, 'WINDOWS-TEST-CHECKLIST.md')
 if (fs.existsSync(checklist)) fs.copyFileSync(checklist, path.join(penDriveDir, 'WINDOWS-TEST-CHECKLIST.md'))
 
-// ─── 3. Sanity checks on the unpacked app ──────────────────────────────────
+// --- 3. Sanity checks on the unpacked app ----------------------------------
 const unpackedDir = path.join(releaseDir, 'win-unpacked')
 const problems = []
 if (fs.existsSync(unpackedDir)) {
@@ -106,7 +106,7 @@ if (fs.existsSync(unpackedDir)) {
   if (!hasSqlite) problems.push('better-sqlite3 native binary was not unpacked from app.asar')
   if (!hasArgon2) problems.push('@node-rs/argon2 native binary was not unpacked from app.asar')
 } else {
-  console.warn('[postdist] release/win-unpacked not found — skipping packaging sanity checks')
+  console.warn('[postdist] release/win-unpacked not found - skipping packaging sanity checks')
 }
 
 const sizeMb = (fs.statSync(installerPath).size / (1024 * 1024)).toFixed(1)

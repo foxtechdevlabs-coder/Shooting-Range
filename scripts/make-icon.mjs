@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Generate build/icon.ico (+ build/icon.png, 256×256) from build/icon-source.png.
+ * Generate build/icon.ico (+ build/icon.png, 256x256) from build/icon-source.png.
  *
  * Pure Node: decodes the source PNG with zlib, area-averages it down to each
- * icon size and writes a multi-resolution .ico (BMP entries 16–128, PNG for 256).
+ * icon size and writes a multi-resolution .ico (BMP entries 16-128, PNG for 256).
  *
  * Replace the artwork with your own square PNG and re-run:
  *   node scripts/make-icon.mjs            (source: build/icon-source.png)
- *   node scripts/make-icon.mjs my.png     (any square PNG, 256×256 or larger)
+ *   node scripts/make-icon.mjs my.png     (any square PNG, 256x256 or larger)
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -20,7 +20,7 @@ const outIcon = path.join(root, 'build', 'icon.ico')
 const outPng = path.join(root, 'build', 'icon.png')
 const SIZES = [16, 24, 32, 48, 64, 128, 256]
 
-// ─── PNG decoding ──────────────────────────────────────────────────────────
+// --- PNG decoding ----------------------------------------------------------
 
 function decodePng(buffer) {
   if (buffer.slice(0, 8).toString('hex') !== '89504e470d0a1a0a') throw new Error('Not a PNG file')
@@ -85,7 +85,7 @@ function decodePng(buffer) {
   return { width, height, data: out }
 }
 
-// ─── Resize (area average, keeps edges clean) ──────────────────────────────
+// --- Resize (area average, keeps edges clean) ------------------------------
 
 function resize(image, size) {
   const { width, height, data } = image
@@ -117,7 +117,7 @@ function resize(image, size) {
   return out
 }
 
-// ─── Encoders ──────────────────────────────────────────────────────────────
+// --- Encoders --------------------------------------------------------------
 
 function encodePng(size, rgba) {
   const raw = Buffer.alloc(size * (size * 4 + 1))
@@ -180,15 +180,15 @@ function encodeIcoBmp(size, rgba) {
   }
 
   const maskStride = Math.ceil(size / 32) * 4
-  const mask = Buffer.alloc(maskStride * size) // fully transparent mask → use the alpha channel
+  const mask = Buffer.alloc(maskStride * size) // fully transparent mask -> use the alpha channel
   return Buffer.concat([header, pixels, mask])
 }
 
-// ─── Main ──────────────────────────────────────────────────────────────────
+// --- Main ------------------------------------------------------------------
 
 const source = decodePng(fs.readFileSync(sourcePath))
-if (source.width !== source.height) throw new Error(`Icon artwork must be square (got ${source.width}×${source.height})`)
-if (source.width < 256) throw new Error('Icon artwork must be at least 256×256')
+if (source.width !== source.height) throw new Error(`Icon artwork must be square (got ${source.width}x${source.height})`)
+if (source.width < 256) throw new Error('Icon artwork must be at least 256x256')
 
 const entries = SIZES.map((size) => ({ size, rgba: resize(source, size) }))
 
@@ -219,6 +219,6 @@ fs.mkdirSync(path.dirname(outIcon), { recursive: true })
 fs.writeFileSync(outIcon, Buffer.concat([header, directory, ...images]))
 fs.writeFileSync(outPng, encodePng(256, entries.find((entry) => entry.size === 256).rgba))
 
-console.log(`[icon] source ${source.width}×${source.height} → ${SIZES.join(', ')}`)
+console.log(`[icon] source ${source.width}x${source.height} -> ${SIZES.join(', ')}`)
 console.log(`[icon] wrote ${path.relative(root, outIcon)} (${(fs.statSync(outIcon).size / 1024).toFixed(0)} KB)`)
 console.log(`[icon] wrote ${path.relative(root, outPng)}`)

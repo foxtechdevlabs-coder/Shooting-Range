@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * `npm run desktop:dev` — runs the backend, the Vite dev server and Electron
+ * `npm run desktop:dev` - runs the backend, the Vite dev server and Electron
  * together for local development.
  *
- *   backend : tsx watch  → http://127.0.0.1:3001
- *   frontend: Vite       → http://localhost:5173
+ *   backend : tsx watch  -> http://127.0.0.1:3001
+ *   frontend: Vite       -> http://localhost:5173
  *   electron: loads the Vite URL (the backend is NOT started twice)
  *
  * In this mode native modules run under plain Node, so no Electron rebuild is
@@ -74,14 +74,14 @@ process.on('SIGTERM', () => shutdown(0))
 const apiUrl = process.env.API_URL ?? 'http://127.0.0.1:3001/api/health'
 const devUrl = process.env.ELECTRON_START_URL ?? 'http://localhost:5173'
 
-console.log('[desktop:dev] starting backend…')
+console.log('[desktop:dev] starting backend...')
 run('backend', npm, ['--prefix', 'backend/server', 'run', 'dev'])
 
-console.log('[desktop:dev] starting frontend…')
+console.log('[desktop:dev] starting frontend...')
 run('frontend', npm, ['--prefix', 'frontend', 'run', 'dev'])
 
 const [apiReady, uiReady] = await Promise.all([waitFor(apiUrl), waitFor(devUrl)])
-if (!apiReady) console.warn('[desktop:dev] backend did not answer on /api/health — starting Electron anyway')
+if (!apiReady) console.warn('[desktop:dev] backend did not answer on /api/health - starting Electron anyway')
 if (!uiReady) { console.error('[desktop:dev] frontend dev server did not start'); shutdown(1) }
 
 console.log('[desktop:dev] launching Electron against', devUrl)

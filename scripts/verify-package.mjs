@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `npm run verify:package` — static verification of the desktop packaging.
+ * `npm run verify:package` - static verification of the desktop packaging.
  *
  * Runs anywhere (Windows, macOS, Linux) and does not need Electron installed:
  * it inspects the compiled output and the electron-builder configuration, then
@@ -17,7 +17,7 @@ const failures = []
 
 function check(ok, label, detail = '') {
   checks++
-  if (!ok) failures.push(`${label}${detail ? ` — ${detail}` : ''}`)
+  if (!ok) failures.push(`${label}${detail ? ` - ${detail}` : ''}`)
   console.log(`${ok ? '  PASS' : '  FAIL'}  ${label}${detail ? `  (${detail})` : ''}`)
 }
 
@@ -31,13 +31,17 @@ const builderYml = read(path.join(root, 'electron-builder.yml'))
 console.log('\n1) Build output present (npm run build:all)')
 const mainCjs = path.join(root, 'desktop', 'dist', 'main.cjs')
 const preloadCjs = path.join(root, 'desktop', 'dist', 'preload.cjs')
-const backendEntry = path.join(root, 'backend', 'server', 'dist', 'server', 'src', 'server.js')
+const backendEntry = path.join(root, 'backend', 'server', 'dist', 'server', 'src', 'server.bundle.cjs')
+const backendEsmEntry = path.join(root, 'backend', 'server', 'dist', 'server', 'src', 'server.js')
 const backendMigrations = path.join(root, 'backend', 'server', 'dist', 'server', 'src', 'db', 'migrations')
 const frontendIndex = path.join(root, 'frontend', 'dist', 'index.html')
 
 check(fs.existsSync(mainCjs), 'desktop/dist/main.cjs exists (CommonJS)')
 check(fs.existsSync(preloadCjs), 'desktop/dist/preload.cjs exists (CommonJS)')
-check(fs.existsSync(backendEntry), 'backend startServer bundle exists', path.relative(root, backendEntry))
+check(fs.existsSync(backendEntry), 'backend CommonJS bundle exists (loaded by the Electron main)', path.relative(root, backendEntry))
+check(fs.existsSync(backendEsmEntry), 'backend ESM build exists (dev CLI)', path.relative(root, backendEsmEntry))
+check(fs.existsSync(backendEntry) && /module\.exports/.test(read(backendEntry)), 'backend bundle is CommonJS (module.exports)')
+check(fs.existsSync(backendEntry) && /startServer/.test(read(backendEntry)), 'backend bundle exports startServer')
 check(fs.existsSync(backendMigrations) && fs.readdirSync(backendMigrations).some((f) => f.endsWith('.sql')), 'SQL migrations copied into the backend build')
 check(fs.existsSync(frontendIndex), 'frontend/dist/index.html exists (SPA served by the backend)')
 
@@ -56,7 +60,11 @@ check(/session-end/.test(main), 'Windows session-end (shutdown) handled')
 check(/before-quit/.test(main), 'before-quit shutdown path present')
 check(/runShutdownBackup/.test(main), 'shutdown backup is called on quit')
 check(/print-spool\.ps1/.test(main) && /process\.resourcesPath/.test(main), 'print-spool.ps1 resolved from resources (not app.asar)')
-check(/port:\s*3001/.test(main), 'prefers port 3001 (falls back to a free port in the backend)')
+check(/3001/.test(main) && /process\.env\.PORT/.test(main), 'prefers port 3001 (PORT env override, free port fallback in the backend)')
+check(/require\(entry\)/.test(main), 'loads the backend with a CommonJS require() (works inside app.asar)')
+check(!/import\(pathToFileURL|import\(\s*entry\s*\)/.test(main), 'no dynamic import() of the backend (fails inside app.asar)')
+check(/server\.bundle\.cjs/.test(main), 'backend entry points at server.bundle.cjs')
+check(/app\.asar\.unpacked/.test(main), 'prefers the unpacked backend copy when present')
 check(!/electron-updater|autoUpdater|sentry|google-analytics|mixpanel|segment\.io/i.test(main), 'no updater / analytics / crash reporters')
 
 console.log('\n3) Preload allow-list (desktop/dist/preload.cjs)')
@@ -81,6 +89,26 @@ check(/publish:\s*null/.test(builderYml), 'no publish/auto-update channel')
 check((builderYml.match(/!backend\/server\/dist\/server\/src\/tests\/\*\*/) ?? []).length === 1, 'tests excluded from the package')
 check(/"version":\s*"1\.0\.0"/.test(read(path.join(root, 'package.json'))), 'root version is the single source of truth', pkg.version)
 
+console.log('\n4b) Toolchain pinned for the rebuild (package.json)')
+const devDeps = pkg.devDependencies ?? {}
+check(/^\d+\.\d+\.\d+$/.test(String(devDeps.electron ?? '')), 'electron pinned to an exact version (no ^ or ~)', String(devDeps.electron))
+check(!Object.prototype.hasOwnProperty.call(devDeps, '@electron/rebuild'), '@electron/rebuild not duplicated in devDependencies (electron-builder runs it)')
+check(typeof devDeps.esbuild === 'string', 'esbuild present (builds the CommonJS backend bundle)')
+check(typeof pkg.scripts?.['smoke:package'] === 'string', '"smoke:package" script present', String(pkg.scripts?.['smoke:package']))
+check(fs.existsSync(path.join(root, 'scripts', 'smoke-package.mjs')), 'scripts/smoke-package.mjs exists')
+const lockFile = path.join(root, 'package-lock.json')
+if (fs.existsSync(lockFile)) {
+  let lockedElectron = ''
+  try {
+    lockedElectron = JSON.parse(read(lockFile)).packages?.['node_modules/electron']?.version ?? ''
+  } catch {
+    lockedElectron = 'unreadable'
+  }
+  check(lockedElectron === devDeps.electron, 'package-lock.json electron version matches the pin', lockedElectron || 'missing')
+} else {
+  check(false, 'package-lock.json present at the repo root')
+}
+
 console.log('\n5) No secrets or machine paths in build output')
 const scanTargets = [mainCjs, preloadCjs, backendEntry, frontendIndex].filter((file) => fs.existsSync(file))
 for (const file of scanTargets) {
@@ -100,7 +128,7 @@ check(/SHOOTINGRANGE_DATA_DIR/.test(main), 'SHOOTINGRANGE_DATA_DIR override supp
 check(/data-location\.json/.test(main), 'optional data-location.json override supported')
 check(/startServer\(\{/.test(main) && /dataDir/.test(main), 'dataDir injected into startServer()')
 
-console.log(`\n${failures.length === 0 ? 'ALL CHECKS PASSED' : 'FAILURES'} — ${checks - failures.length}/${checks} passed`)
+console.log(`\n${failures.length === 0 ? 'ALL CHECKS PASSED' : 'FAILURES'} - ${checks - failures.length}/${checks} passed`)
 if (failures.length > 0) {
   for (const failure of failures) console.log(`  - ${failure}`)
   process.exit(1)

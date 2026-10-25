@@ -15,7 +15,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 /** Compiled builds keep migrations next to the JS; tsx runs read the .sql sources. */
 function resolveMigrationsDir(): string {
   const candidates = [
+    // normal case: this module sits next to ./migrations (tsc build, tsx, bundle in ../)
     path.join(__dirname, 'migrations'),
+    // desktop bundle: backend/server/dist/server/src/server.bundle.cjs
+    path.join(__dirname, 'db', 'migrations'),
     path.join(__dirname, '..', '..', 'src', 'db', 'migrations'),
   ]
   for (const candidate of candidates) {
