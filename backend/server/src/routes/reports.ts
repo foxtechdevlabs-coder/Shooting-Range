@@ -88,8 +88,11 @@ function reportRoute(
           void sendWorkbook(res, name, filters, req.user!.full_name, { ...query, sql: filteredSql, params }).catch((error) => sendFailure(next, error, res))
           return
         }
-        const page = z.coerce.number().int().nonnegative().default(0).parse(req.query.page)
-        const limit = z.coerce.number().int().positive().max(200).default(100).parse(req.query.limit)
+        // Parse together so validation errors report a named field ("page" / "limit").
+        const { page, limit } = z.object({
+          page: z.coerce.number().int().nonnegative().default(0),
+          limit: z.coerce.number().int().positive().max(200).default(100),
+        }).parse({ page: req.query.page, limit: req.query.limit })
         const total = (db.prepare(`SELECT COUNT(*) AS total FROM (${filteredSql}) filtered_rows`).get(...params) as { total: number }).total
         const data = db.prepare(`${filteredSql} LIMIT ? OFFSET ?`)
           .all(...params, limit, page * limit)
