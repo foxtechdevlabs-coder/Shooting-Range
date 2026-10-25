@@ -87,7 +87,7 @@ check(/oneClick:\s*false/.test(builderYml), 'assisted installer (choose folder)'
 check(/artifactName:\s*ShootingRangeSystem-Setup-\$\{version\}\.exe/.test(builderYml), 'installer filename ShootingRangeSystem-Setup-<version>.exe')
 check(/publish:\s*null/.test(builderYml), 'no publish/auto-update channel')
 check((builderYml.match(/!backend\/server\/dist\/server\/src\/tests\/\*\*/) ?? []).length === 1, 'tests excluded from the package')
-check(/"version":\s*"1\.0\.0"/.test(read(path.join(root, 'package.json'))), 'root version is the single source of truth', pkg.version)
+check(/^\d+\.\d+\.\d+$/.test(String(pkg.version)), 'root package.json version is semver (single source of truth)', String(pkg.version))
 
 console.log('\n4b) Toolchain pinned for the rebuild (package.json)')
 const devDeps = pkg.devDependencies ?? {}
@@ -105,6 +105,13 @@ if (fs.existsSync(lockFile)) {
     lockedElectron = 'unreadable'
   }
   check(lockedElectron === devDeps.electron, 'package-lock.json electron version matches the pin', lockedElectron || 'missing')
+  let lockedVersion = ''
+  try {
+    lockedVersion = JSON.parse(read(lockFile)).version ?? ''
+  } catch {
+    lockedVersion = 'unreadable'
+  }
+  check(lockedVersion === pkg.version, 'package-lock.json version matches package.json', lockedVersion || 'missing')
 } else {
   check(false, 'package-lock.json present at the repo root')
 }
