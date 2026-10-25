@@ -24,6 +24,7 @@
     "dist": "npm run build:all && electron-builder --win nsis",
     "postdist": "node scripts/postdist.mjs",
     "verify:package": "node scripts/verify-package.mjs",
+    "lint:scripts": "node scripts/lint-scripts.mjs",
     "smoke:package": "node scripts/smoke-package.mjs",
     "test:backend": "node scripts/run-backend-tests.mjs",
     "test": "npm run test:backend"

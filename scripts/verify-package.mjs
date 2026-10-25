@@ -10,6 +10,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { lintScripts } from './lint-scripts.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 let checks = 0
@@ -120,8 +121,12 @@ console.log('\n5) No secrets or machine paths in build output')
 const scanTargets = [mainCjs, preloadCjs, backendEntry, frontendIndex].filter((file) => fs.existsSync(file))
 for (const file of scanTargets) {
   const text = read(file)
-  const machinePath = root.replace(/\\/g, '/')
-  check(!text.includes(machinePath), `no absolute build path in ${path.relative(root, file)}`)
+  // Either slash style can end up in the output depending on the build OS.
+  const machinePaths = [root.replace(/\\/g, '/'), root, root.replace(/\//g, '\\')].filter((value) => value.length > 6)
+  check(
+    !machinePaths.some((machinePath) => text.includes(machinePath)),
+    `no absolute build path in ${path.relative(root, file)}`,
+  )
 }
 const backendSrc = path.join(root, 'backend', 'server', 'dist')
 const envFiles = fs.existsSync(backendSrc)
@@ -134,6 +139,13 @@ check(/function resolveDataDir/.test(main) && /getPath\(['"]userData['"]\)/.test
 check(/SHOOTINGRANGE_DATA_DIR/.test(main), 'SHOOTINGRANGE_DATA_DIR override supported')
 check(/data-location\.json/.test(main), 'optional data-location.json override supported')
 check(/startServer\(\{/.test(main) && /dataDir/.test(main), 'dataDir injected into startServer()')
+
+console.log('\n7) Script portability (Windows-safe import()/require(), ASCII helpers)')
+const lint = lintScripts()
+for (const result of lint.results) {
+  check(result.ok, result.label)
+  if (!result.ok) console.log(result.detail)
+}
 
 console.log(`\n${failures.length === 0 ? 'ALL CHECKS PASSED' : 'FAILURES'} - ${checks - failures.length}/${checks} passed`)
 if (failures.length > 0) {

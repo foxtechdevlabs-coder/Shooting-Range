@@ -55,8 +55,9 @@ passed` on success; on failure it prints the full `app.log` and exits 1.
 
 | # | Step | Expected | Result |
 |---|------|----------|--------|
-| 1.4 | `npm run smoke:package` | `[smoke] PASS - all smoke checks passed` | |
-| 1.5 | If it fails, copy the printed `app.log` lines back | log names the failing module/file | |
+| 1.4 | `npm run lint:scripts` | `No problems found.` (portability lint: import() paths, shell strings, ASCII helpers) | |
+| 1.5 | `npm run smoke:package` | `[smoke] PASS - all smoke checks passed` | |
+| 1.6 | If the smoke test fails, copy the printed `app.log` lines back | log names the failing module/file | |
 
 > `npm run dist` needs internet **on this build PC** (npm packages + Electron binaries). The
 > installed app itself never needs a network.

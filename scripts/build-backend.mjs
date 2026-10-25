@@ -19,8 +19,13 @@
  */
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import { resolveTsc, root } from './tsc-path.mjs'
+
+// require() accepts plain Windows paths ("C:\...\lib\main.js"); import() only
+// accepts file:// URLs, so it must never receive a path.join() result.
+const nodeRequire = createRequire(import.meta.url)
 const serverDir = path.join(root, 'backend', 'server')
 const distDir = path.join(serverDir, 'dist')
 const migrationsFrom = path.join(serverDir, 'src', 'db', 'migrations')
@@ -36,10 +41,16 @@ async function loadEsbuild() {
     path.join(root, 'backend', 'node_modules', 'esbuild'),
   ]
   for (const dir of candidates) {
-    if (fs.existsSync(path.join(dir, 'package.json'))) {
-      return import(path.join(dir, 'lib', 'main.js'))
-    }
+    if (!fs.existsSync(path.join(dir, 'package.json'))) continue
+    // esbuild's lib/main.js is CommonJS, and require() takes native paths on
+    // every platform. Passing the same path to import() throws
+    // ERR_UNSUPPORTED_ESM_URL_SCHEME on Windows ("Received protocol 'c:'").
+    const entry = path.join(dir, 'lib', 'main.js')
+    if (fs.existsSync(entry)) return nodeRequire(entry)
+    // Fall back to the package entry point if esbuild ever moves lib/main.js.
+    return nodeRequire(dir)
   }
+  // Bare specifier: resolved by Node, no path handling involved.
   try {
     return await import('esbuild')
   } catch {

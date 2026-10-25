@@ -22,6 +22,7 @@ desktop/
 | `npm run dist` | `build:all` + `electron-builder --win nsis` (Windows only) |
 | `npm run postdist` | SHA-256, `release/PenDrive/`, packaging sanity checks |
 | `npm run verify:package` | static check of the built shell + builder config (any OS) |
+| `npm run lint:scripts` | portability lint of `scripts/` (Windows-safe `import()`, no shell strings, ASCII helpers) |
 | `npm run smoke:package` | launches `release/win-unpacked` with a temp data folder + free port (Windows) |
 | `npm run test:backend` | backend vitest suite |
 
@@ -71,6 +72,27 @@ then waits up to 90 s for `GET /api/health`, checks `GET /api/setup/status` repo
 `needsSetup: true`, closes the app the way a user does (`taskkill` → WM_CLOSE) and confirms a
 `*-shutdown.db` backup appeared. On failure it prints the full `app.log` plus the process
 stdout/stderr and exits 1.
+
+## Windows notes (scripts/)
+
+Everything in `scripts/` must also run from PowerShell on Windows, so:
+
+- **Never pass a plain path to `import()`.** On Windows `import('C:\\dev\\app\\x.mjs')` throws
+  `ERR_UNSUPPORTED_ESM_URL_SCHEME: Received protocol 'c:'` (absolute POSIX paths happen to work,
+  which is why this only fails on Windows). Native paths go through
+  `createRequire(import.meta.url)`; if a URL is really needed, use `pathToFileURL(path).href`.
+  esbuild is loaded this way in `scripts/build-backend.mjs`.
+- **No shell strings with paths.** Commands run through `execFileSync(cmd, [args])` so folders
+  with spaces (`C:\Program Files\...`) stay a single argument. `desktop:dev` only uses a shell
+  for `npm.cmd`, and quotes those arguments itself.
+- **No POSIX tools.** `rm`/`cp`/`chmod`/`ln` are replaced by `fs.rmSync`/`fs.copyFileSync`/...;
+  processes are stopped with `taskkill /PID <pid> /T /F` on Windows (a plain `child.kill()`
+  leaves `vite`/`tsx` running because only the `cmd.exe` wrapper is killed).
+- **`.ps1` helpers stay ASCII** (PowerShell 5.1 mis-decodes UTF-8 without a BOM);
+  `verify-package.ps1` and `print-spool.ps1` are checked by the lint.
+- `npm run lint:scripts` enforces the first, second and fourth rules, and
+  `npm run verify:package` runs it as its last section. Both print `file:line` for every
+  violation.
 
 ## Data location
 

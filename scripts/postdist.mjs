@@ -78,12 +78,30 @@ if (fs.existsSync(unpackedDir)) {
   const asarPath = path.join(unpackedDir, 'resources', 'app.asar')
   if (fs.existsSync(asarPath)) {
     const asar = fs.readFileSync(asarPath)
-    const machinePath = root.replace(/\\/g, '/')
-    if (asar.includes(Buffer.from(machinePath, 'utf8'))) {
-      problems.push(`app.asar contains the build-machine path ${machinePath}`)
+    // The build-machine path can appear with either slash style; check both so
+    // this also works when the build runs on Windows.
+    const machinePaths = [...new Set([root, root.replace(/\\/g, '/'), root.replace(/\//g, '\\')])]
+    for (const machinePath of machinePaths) {
+      if (machinePath.length > 8 && asar.includes(Buffer.from(machinePath, 'utf8'))) {
+        problems.push(`app.asar contains the build-machine path ${machinePath}`)
+      }
     }
     for (const banned of ['shootingrange.db', 'loadtest.db', '.env']) {
       if (asar.includes(Buffer.from(banned, 'utf8'))) problems.push(`app.asar contains ${banned}`)
+    }
+    // Everything the packaged app needs at runtime must really be in the asar
+    // (the asar header lists every file path, so searching the bytes is enough).
+    const required = [
+      ['desktop/dist/main.cjs', 'Electron main process'],
+      ['backend/server/dist/server/src/server.bundle.cjs', 'backend CommonJS bundle'],
+      ['backend/server/dist/server/src/db/migrations', 'SQL migrations'],
+      ['frontend/dist/index.html', 'frontend build'],
+      ['node_modules/better-sqlite3/package.json', 'better-sqlite3 package'],
+      ['node_modules/@node-rs/argon2/package.json', '@node-rs/argon2 package'],
+    ]
+    // asar stores paths with forward slashes regardless of the build OS.
+    for (const [needle, label] of required) {
+      if (!asar.includes(Buffer.from(needle, 'utf8'))) problems.push(`app.asar is missing ${label} (${needle})`)
     }
   } else {
     problems.push('resources/app.asar is missing')
